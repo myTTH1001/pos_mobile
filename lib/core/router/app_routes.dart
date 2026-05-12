@@ -1,14 +1,18 @@
-/// Tất cả tên route tập trung ở đây — không hardcode string ở chỗ khác.
-/// Dùng [AppRoutes.login] thay vì '/login' trong code.
 abstract class AppRoutes {
   AppRoutes._();
 
+  // ── Auth ──────────────────────────────────────────────────
   static const login = '/login';
-  static const dashboard = '/dashboard';
-  static const products = '/products';
+
+  // ── Shell tabs (StatefulShellRoute) ───────────────────────
+  static const pos = '/pos'; // Bán hàng
+  static const dashboard = '/dashboard'; // Dashboard chính với 4 tab bên dưới
+  static const products = '/products'; // Sản phẩm
+  static const stock = '/stock'; // Kho
+  static const reports = '/reports'; // Báo cáo
+  static const users = '/users'; // Nhân viên
+
+  // ── Routes nằm ngoài shell (push full-screen) ─────────────
   static const orders = '/orders';
   static const invoices = '/invoices';
-  static const stock = '/stock';
-  static const reports = '/reports';
-  static const users = '/users';
 }
