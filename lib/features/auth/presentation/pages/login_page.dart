@@ -1,10 +1,10 @@
-// lib/features/auth/presentation/pages/login_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_state.dart';
@@ -15,7 +15,8 @@ class LoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(create: (_) => AuthBloc(), child: const _LoginView());
+    // AuthBloc đã được inject ở root (app.dart) — không tạo mới ở đây.
+    return const _LoginView();
   }
 }
 
@@ -35,14 +36,37 @@ class _LoginView extends StatelessWidget {
         backgroundColor: const Color(0xFFF0F4FF),
         body: BlocListener<AuthBloc, AuthState>(
           listener: (ctx, state) {
-            if (state is AuthAuthenticated) {
-              // TODO: go_router → push đến dashboard
-              ScaffoldMessenger.of(ctx).showSnackBar(
-                const SnackBar(
-                  content: Text('Đăng nhập thành công!'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
+            // AuthAuthenticated → GoRouter tự redirect, không cần context.go() ở đây
+            // Chỉ xử lý error UI
+            if (state is AuthError) {
+              ScaffoldMessenger.of(ctx)
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const Gap(8),
+                        Expanded(
+                          child: Text(
+                            state.message,
+                            style: GoogleFonts.dmSans(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: AppColors.error,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    margin: const EdgeInsets.all(12),
+                  ),
+                );
             }
           },
           child: isTablet ? _TabletLayout() : _PhoneLayout(),
@@ -52,7 +76,7 @@ class _LoginView extends StatelessWidget {
   }
 }
 
-// ── Phone layout ─────────────────────────────────────────────────────────────
+// ── Phone layout ──────────────────────────────────────────────────────────────
 class _PhoneLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -82,9 +106,7 @@ class _TabletLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Left panel — branding
         Expanded(flex: 5, child: _BrandPanel()),
-        // Right panel — form
         Expanded(
           flex: 4,
           child: Container(
@@ -115,7 +137,7 @@ class _TabletLayout extends StatelessWidget {
   }
 }
 
-// ── Brand panel (tablet left side) ───────────────────────────────────────────
+// ── Brand panel ───────────────────────────────────────────────────────────────
 class _BrandPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -133,7 +155,6 @@ class _BrandPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Logo
               Container(
                 width: 56,
                 height: 56,
@@ -167,7 +188,6 @@ class _BrandPanel extends StatelessWidget {
                 ),
               ).animate().fadeIn(delay: 400.ms),
               const Spacer(),
-              // Feature chips
               ..._features.map(
                 (f) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
