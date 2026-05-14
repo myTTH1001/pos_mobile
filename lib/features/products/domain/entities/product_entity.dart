@@ -1,3 +1,4 @@
+// lib/features/products/domain/entities/product_entity.dart
 import 'package:equatable/equatable.dart';
 
 class ProductEntity extends Equatable {
@@ -7,7 +8,6 @@ class ProductEntity extends Equatable {
     required this.price,
     this.unit,
     this.image,
-    this.stock,
   });
 
   final int id;
@@ -15,7 +15,6 @@ class ProductEntity extends Equatable {
   final double price;
   final String? unit;
   final String? image;
-  final int? stock;
 
   @override
   List<Object?> get props => [id, name, price];

@@ -1,3 +1,4 @@
+// lib/features/pos/presentation/pages/pos_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -109,7 +110,6 @@ class _PhoneLayout extends StatelessWidget {
           ),
         ),
         actions: [
-          // Badge giỏ hàng
           BlocBuilder<PosBloc, PosState>(
             buildWhen: (p, c) => p.itemCount != c.itemCount,
             builder: (ctx, state) => IconButton(
@@ -147,6 +147,8 @@ class _PhoneLayout extends StatelessWidget {
       body: TabBarView(
         controller: tabController,
         children: [
+          // ProductGrid nằm trong cùng BlocProvider scope của PosBloc
+          // nên cart interactions vẫn hoạt động bình thường
           const ProductGrid(),
           CartPanel(onCheckout: () => _showPaymentSheet(context)),
         ],
