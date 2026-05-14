@@ -21,10 +21,11 @@ import 'app_routes.dart';
 /// Logic redirect:
 /// - [AuthLoading] / [AuthInitial] → hiển thị splash (không redirect, chờ)
 /// - [AuthUnauthenticated]         → redirect về /login (trừ khi đang ở /login)
-/// - [AuthAuthenticated]           → redirect về /dashboard (nếu đang ở /login)
+/// - [AuthAuthenticated]           → redirect về /pos (nếu đang ở /login)
 GoRouter createRouter(AuthBloc authBloc) {
   return GoRouter(
-    initialLocation: AppRoutes.dashboard,
+    // FIX #9: '/dashboard' không có route nào match → đổi sang '/pos'
+    initialLocation: AppRoutes.pos,
     debugLogDiagnostics: true, // tắt khi release
     // ── Refresh stream ──────────────────────────────────────
     // GoRouter re-evaluate redirect mỗi khi AuthBloc emit state mới.
@@ -46,9 +47,8 @@ GoRouter createRouter(AuthBloc authBloc) {
       // Chưa đăng nhập → về login
       if (!isLoggedIn && !isOnLoginPage) return AppRoutes.login;
 
-      // Đã đăng nhập + đang ở login → về dashboard
+      // FIX #7: bỏ dòng `;` thừa — đã đăng nhập + đang ở login → về pos
       if (isLoggedIn && isOnLoginPage) return AppRoutes.pos;
-      ;
 
       return null; // không redirect
     },
@@ -139,7 +139,6 @@ GoRouter createRouter(AuthBloc authBloc) {
       ),
     ],
 
-    // ─────────
     // ── Error page ──────────────────────────────────────────
     errorBuilder: (context, state) => _RouterErrorPage(error: state.error),
   );

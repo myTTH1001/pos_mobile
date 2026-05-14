@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 
 import '../../../../core/router/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../auth/presentation/bloc/auth_event.dart';
 
 class DashboardShell extends StatelessWidget {
   const DashboardShell({super.key, required this.navigationShell});
@@ -58,6 +61,8 @@ class _MobileLayout extends StatelessWidget {
 
       body: navigationShell,
 
+      // FIX #10: dùng dashboardDestinations (5 item, khớp với số branch trong router)
+      // thay vì kNavDestinations (7 item) để tránh index out of bounds.
       bottomNavigationBar: NavigationBar(
         height: 72,
         selectedIndex: navigationShell.currentIndex,
@@ -169,7 +174,6 @@ class _DesktopLayout extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemBuilder: (context, index) {
                       final item = dashboardDestinations[index];
-
                       final selected = navigationShell.currentIndex == index;
 
                       return Padding(
@@ -198,10 +202,10 @@ class _DesktopLayout extends StatelessWidget {
                     children: [
                       const _ProfileAvatar(),
                       const SizedBox(width: 12),
-                      Expanded(
+                      const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text(
                               'Thu ngân',
                               style: TextStyle(fontWeight: FontWeight.w600),
@@ -217,9 +221,13 @@ class _DesktopLayout extends StatelessWidget {
                           ],
                         ),
                       ),
+                      // FIX #8: logout button desktop sidebar phải gọi AuthBloc
                       IconButton(
-                        onPressed: () {},
+                        onPressed: () => context.read<AuthBloc>().add(
+                          const AuthLogoutRequested(),
+                        ),
                         icon: const Icon(Iconsax.logout),
+                        tooltip: 'Đăng xuất',
                       ),
                     ],
                   ),
@@ -442,6 +450,7 @@ class DashboardDestination {
   });
 }
 
+// Giữ đúng 5 destinations — khớp với 5 StatefulShellBranch trong app_router.dart
 const dashboardDestinations = [
   DashboardDestination(label: 'POS', icon: Iconsax.shop, route: AppRoutes.pos),
   DashboardDestination(

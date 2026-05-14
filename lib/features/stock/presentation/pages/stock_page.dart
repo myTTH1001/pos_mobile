@@ -38,7 +38,7 @@ class StockPage extends StatelessWidget {
                 child: ListView.separated(
                   padding: const EdgeInsets.all(20),
                   itemCount: 20,
-                  separatorBuilder: (_, __) => const Divider(height: 24),
+                  separatorBuilder: (_, _) => const Divider(height: 24),
                   itemBuilder: (context, index) {
                     return ListTile(
                       leading: Container(
