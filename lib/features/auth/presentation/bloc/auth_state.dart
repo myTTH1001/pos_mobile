@@ -27,6 +27,9 @@ class AuthUnauthenticated extends AuthState {
 }
 
 /// Lỗi login (sai pass, bị khoá, v.v.)
+/// Tự động được emit kèm AuthUnauthenticated ngay sau đó trong Bloc,
+/// nên state này chỉ tồn tại 1 frame — đủ để listener bắt nhưng
+/// không "kẹt" lại gây re-trigger ở lần submit tiếp theo.
 class AuthError extends AuthState {
   const AuthError(this.message);
   final String message;

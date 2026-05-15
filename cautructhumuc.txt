@@ -1,69 +1,24 @@
-
-lib/
-├── main.dart
-├── app.dart                          # MaterialApp, routing, theme
-│
-├── core/
-│   ├── constants/
-│   │   ├── api_constants.dart        # base URL, endpoints
-│   │   └── app_constants.dart        # padding, radius, ...
-│   ├── errors/
-│   │   ├── exceptions.dart
-│   │   └── failures.dart
-│   ├── network/
-│   │   ├── dio_client.dart           # Dio setup, interceptors
-│   │   └── token_interceptor.dart    # tự động attach + refresh token
-│   ├── storage/
-│   │   └── secure_storage.dart       # flutter_secure_storage
-│   ├── theme/
-│   │   ├── app_theme.dart
-│   │   ├── app_colors.dart
-│   │   └── app_text_styles.dart
-│   └── utils/
-│       ├── formatters.dart           # tiền tệ, ngày giờ
-│       └── validators.dart
-│
-├── features/
-│   ├── auth/
-│   │   ├── data/
-│   │   │   ├── datasources/
-│   │   │   │   └── auth_remote_datasource.dart
-│   │   │   ├── models/
-│   │   │   │   └── auth_response_model.dart
-│   │   │   └── repositories/
-│   │   │       └── auth_repository_impl.dart
-│   │   ├── domain/
-│   │   │   ├── entities/
-│   │   │   │   └── user_entity.dart
-│   │   │   ├── repositories/
-│   │   │   │   └── auth_repository.dart
-│   │   │   └── usecases/
-│   │   │       ├── login_usecase.dart
-│   │   │       └── logout_usecase.dart
-│   │   └── presentation/
-│   │       ├── bloc/                 # hoặc provider/riverpod
-│   │       │   ├── auth_bloc.dart
-│   │       │   ├── auth_event.dart
-│   │       │   └── auth_state.dart
-│   │       ├── pages/
-│   │       │   └── login_page.dart
-│   │       └── widgets/
-│   │           └── login_form.dart
-│   │
-│   ├── dashboard/
-│   ├── products/
-│   ├── orders/
-│   ├── invoices/
-│   ├── stock/
-│   ├── reports/
-│   └── users/
-│
-└── shared/
-    ├── widgets/
-    │   ├── app_button.dart
-    │   ├── app_text_field.dart
-    │   ├── loading_overlay.dart
-    │   └── error_snackbar.dart
-    └── extensions/
-        └── context_extensions.dart
-        
+pos_app/
+├── pubspec.yaml
+├── lib/
+│   ├── main.dart
+│   ├── app.dart
+│   ├── core/
+│   │   ├── constants/       api_constants.dart, app_constants.dart
+│   │   ├── extensions/      responsive_extension.dart
+│   │   ├── network/         dio_client.dart
+│   │   ├── router/          app_router.dart, app_routes.dart
+│   │   ├── storage/         secure_storage.dart
+│   │   └── theme/           app_colors.dart, app_theme.dart, app_text_styles.dart
+│   ├── features/
+│   │   ├── auth/            data/ · domain/ · presentation/
+│   │   ├── dashboard/       presentation/ (shell + nav widgets)
+│   │   ├── pos/             presentation/ (bloc + pages + widgets)
+│   │   ├── products/        data/ · domain/ · presentation/
+│   │   ├── orders/          data/ · domain/
+│   │   ├── stock/           presentation/
+│   │   ├── reports/         presentation/
+│   │   └── users/           presentation/
+│   └── shared/
+│       ├── extensions/      context_extensions.dart
+│       └── widgets/         app_button, app_text_field, error_snackbar, loading_overlay, placeholder_page

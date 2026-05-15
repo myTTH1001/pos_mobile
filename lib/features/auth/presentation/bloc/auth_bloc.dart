@@ -25,7 +25,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthCheckRequested event,
     Emitter<AuthState> emit,
   ) async {
-    // Giữ AuthLoading trong lúc kiểm tra để GoRouter không redirect sớm
     emit(const AuthLoading());
     try {
       final loggedIn = await _repo.isLoggedIn();
@@ -43,12 +42,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     try {
       await _repo.login(username: event.username, password: event.password);
-      // Emit AuthAuthenticated → GoRouter tự redirect sang /dashboard
       emit(const AuthAuthenticated());
     } on AuthException catch (e) {
+      // Emit error để listener bắt và hiển thị SnackBar,
+      // sau đó ngay lập tức reset về Unauthenticated để:
+      //   1. State không "kẹt" ở AuthError
+      //   2. Listener không re-trigger ở lần submit tiếp theo
+      //   3. Form vẫn enabled, user có thể thử lại
       emit(AuthError(e.message));
+      emit(const AuthUnauthenticated());
     } catch (_) {
       emit(const AuthError('Đã xảy ra lỗi. Vui lòng thử lại.'));
+      emit(const AuthUnauthenticated());
     }
   }
 
@@ -59,7 +64,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     await _repo.logout();
-    // Emit AuthUnauthenticated → GoRouter tự redirect về /login
     emit(const AuthUnauthenticated());
   }
 }

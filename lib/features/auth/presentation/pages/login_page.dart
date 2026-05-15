@@ -15,7 +15,6 @@ class LoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // AuthBloc đã được inject ở root (app.dart) — không tạo mới ở đây.
     return const _LoginView();
   }
 }
@@ -32,45 +31,12 @@ class _LoginView extends StatelessWidget {
       value: SystemUiOverlayStyle.dark.copyWith(
         statusBarColor: Colors.transparent,
       ),
+      // Không đặt BlocListener ở đây — AuthError đã được xử lý
+      // hoàn toàn bên trong LoginForm (BlocConsumer).
+      // Giữ BlocListener ở nhiều nơi cho cùng 1 state sẽ gây double SnackBar.
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F4FF),
-        body: BlocListener<AuthBloc, AuthState>(
-          listener: (ctx, state) {
-            // AuthAuthenticated → GoRouter tự redirect, không cần context.go() ở đây
-            // Chỉ xử lý error UI
-            if (state is AuthError) {
-              ScaffoldMessenger.of(ctx)
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                        const Gap(8),
-                        Expanded(
-                          child: Text(
-                            state.message,
-                            style: GoogleFonts.dmSans(color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: AppColors.error,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    margin: const EdgeInsets.all(12),
-                  ),
-                );
-            }
-          },
-          child: isTablet ? _TabletLayout() : _PhoneLayout(),
-        ),
+        body: isTablet ? _TabletLayout() : _PhoneLayout(),
       ),
     );
   }
