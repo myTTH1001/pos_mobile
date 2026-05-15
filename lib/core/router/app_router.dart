@@ -1,3 +1,4 @@
+// lib/core/router/app_router.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,12 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/bloc/auth_state.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/auth/presentation/pages/register_page.dart';
 
 import '../../features/dashboard/presentation/pages/dashboard_shell.dart';
-
-// ✅ FIX: import đúng PosPage từ features/pos (không phải dashboard/pos_page.dart bị comment)
 import '../../features/pos/presentation/pages/pos_page.dart';
-
 import '../../features/products/presentation/pages/products_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/stock/presentation/pages/stock_page.dart';
@@ -28,15 +27,22 @@ GoRouter createRouter(AuthBloc authBloc) {
       final authState = authBloc.state;
       final location = state.matchedLocation;
 
-      if (authState is AuthInitial || authState is AuthLoading) {
-        return null;
-      }
+      // Chưa biết trạng thái auth → không redirect, giữ nguyên
+      if (authState is AuthInitial || authState is AuthLoading) return null;
 
       final isLoggedIn = authState is AuthAuthenticated;
       final isOnLoginPage = location == AppRoutes.login;
+      final isOnRegisterPage = location == AppRoutes.register;
 
-      if (!isLoggedIn && !isOnLoginPage) return AppRoutes.login;
-      if (isLoggedIn && isOnLoginPage) return AppRoutes.pos;
+      // Chưa đăng nhập — chỉ cho phép vào /login và /register
+      if (!isLoggedIn && !isOnLoginPage && !isOnRegisterPage) {
+        return AppRoutes.login;
+      }
+
+      // Đã đăng nhập mà vào /login hoặc /register → redirect về app
+      if (isLoggedIn && (isOnLoginPage || isOnRegisterPage)) {
+        return AppRoutes.pos;
+      }
 
       return null;
     },
@@ -44,8 +50,15 @@ GoRouter createRouter(AuthBloc authBloc) {
     routes: [
       GoRoute(
         path: AppRoutes.login,
-        name: "login",
+        name: 'login',
         builder: (context, state) => const LoginPage(),
+      ),
+
+      // Route đăng ký — không cần auth, không nằm trong shell
+      GoRoute(
+        path: AppRoutes.register,
+        name: 'register',
+        builder: (context, state) => const RegisterPage(),
       ),
 
       StatefulShellRoute.indexedStack(
@@ -57,7 +70,7 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: AppRoutes.pos,
-                name: "pos",
+                name: 'pos',
                 builder: (context, state) => const PosPage(),
               ),
             ],
@@ -66,7 +79,7 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: AppRoutes.products,
-                name: "products",
+                name: 'products',
                 builder: (context, state) => const ProductsPage(),
               ),
             ],
@@ -75,7 +88,7 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: AppRoutes.stock,
-                name: "stock",
+                name: 'stock',
                 builder: (context, state) => const StockPage(),
               ),
             ],
@@ -84,7 +97,7 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: AppRoutes.reports,
-                name: "reports",
+                name: 'reports',
                 builder: (context, state) => const ReportsPage(),
               ),
             ],
@@ -93,7 +106,7 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: AppRoutes.users,
-                name: "users",
+                name: 'users',
                 builder: (context, state) => const UsersPage(),
               ),
             ],

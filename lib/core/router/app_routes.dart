@@ -3,6 +3,7 @@ abstract class AppRoutes {
 
   // ── Auth ──────────────────────────────────────────────────
   static const login = '/login';
+  static const register = '/register';
 
   // ── Shell tabs (StatefulShellRoute) ───────────────────────
   static const pos = '/pos'; // Bán hàng

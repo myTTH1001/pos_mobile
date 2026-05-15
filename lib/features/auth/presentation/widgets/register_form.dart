@@ -1,40 +1,48 @@
-// lib/features/auth/presentation/widgets/login_form.dart
+// lib/features/auth/presentation/widgets/register_form.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../core/router/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../bloc/auth_bloc.dart';
-import '../bloc/auth_event.dart';
-import '../bloc/auth_state.dart';
+import '../bloc/register_bloc.dart';
+import '../bloc/register_event.dart';
+import '../bloc/register_state.dart';
 
-class LoginForm extends StatefulWidget {
-  const LoginForm({super.key});
+class RegisterForm extends StatefulWidget {
+  const RegisterForm({super.key});
 
   @override
-  State<LoginForm> createState() => _LoginFormState();
+  State<RegisterForm> createState() => _RegisterFormState();
 }
 
-class _LoginFormState extends State<LoginForm> {
+class _RegisterFormState extends State<RegisterForm> {
   final _formKey = GlobalKey<FormState>();
+
+  final _storeNameFocus = FocusNode();
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  final _confirmPasswordFocus = FocusNode();
+
+  final _storeNameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
 
   bool _obscurePass = true;
-  bool _rememberMe = false;
+  bool _obscureConfirm = true;
 
   @override
   void dispose() {
+    _storeNameFocus.dispose();
     _usernameFocus.dispose();
     _passwordFocus.dispose();
+    _confirmPasswordFocus.dispose();
+    _storeNameCtrl.dispose();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -42,21 +50,20 @@ class _LoginFormState extends State<LoginForm> {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
-    context.read<AuthBloc>().add(
-      AuthLoginRequested(
+    context.read<RegisterBloc>().add(
+      RegisterSubmitted(
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
+        storeName: _storeNameCtrl.text.trim(),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<AuthBloc, AuthState>(
-      // Chỉ rebuild khi loading state thay đổi — tránh rebuild không cần thiết
-      buildWhen: (prev, curr) => (prev is AuthLoading) != (curr is AuthLoading),
+    return BlocConsumer<RegisterBloc, RegisterState>(
       listener: (ctx, state) {
-        if (state is AuthError) {
+        if (state is RegisterError) {
           ScaffoldMessenger.of(ctx)
             ..clearSnackBars()
             ..showSnackBar(
@@ -86,44 +93,50 @@ class _LoginFormState extends State<LoginForm> {
               ),
             );
         }
+
+        // RegisterSuccess được xử lý ở RegisterPage (navigate + SnackBar thành công)
       },
       builder: (ctx, state) {
-        final isLoading = state is AuthLoading;
+        final isLoading = state is RegisterLoading;
 
         return Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Heading (phone only) ──────────────────────
-              Builder(
-                builder: (context) {
-                  final isTablet = MediaQuery.sizeOf(context).width >= 600;
-                  if (isTablet) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Đăng nhập',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const Gap(6),
-                      Text(
-                        'Nhập thông tin tài khoản để tiếp tục',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const Gap(28),
-                    ],
-                  );
+              // ── Store name ────────────────────────────────
+              _FieldLabel(label: 'Tên cửa hàng'),
+              const Gap(6),
+              TextFormField(
+                controller: _storeNameCtrl,
+                focusNode: _storeNameFocus,
+                enabled: !isLoading,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                onFieldSubmitted: (_) =>
+                    FocusScope.of(context).requestFocus(_usernameFocus),
+                decoration: InputDecoration(
+                  hintText: 'Ví dụ: Đặc Sản Quê Hương',
+                  prefixIcon: Icon(
+                    Icons.storefront_outlined,
+                    color: _storeNameFocus.hasFocus
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    size: 20,
+                  ),
+                ),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Vui lòng nhập tên cửa hàng';
+                  }
+                  if (v.trim().length < 2) {
+                    return 'Tên cửa hàng tối thiểu 2 ký tự';
+                  }
+                  return null;
                 },
-              ),
+              ).animate().fadeIn(delay: 100.ms).slideX(begin: -0.05),
+
+              const Gap(16),
 
               // ── Username ──────────────────────────────────
               _FieldLabel(label: 'Tên đăng nhập'),
@@ -154,6 +167,9 @@ class _LoginFormState extends State<LoginForm> {
                   if (v.trim().length < 3) {
                     return 'Tên đăng nhập tối thiểu 3 ký tự';
                   }
+                  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(v.trim())) {
+                    return 'Chỉ được dùng chữ, số và dấu gạch dưới';
+                  }
                   return null;
                 },
               ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.05),
@@ -168,10 +184,11 @@ class _LoginFormState extends State<LoginForm> {
                 focusNode: _passwordFocus,
                 enabled: !isLoading,
                 obscureText: _obscurePass,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _submit(ctx),
+                textInputAction: TextInputAction.next,
+                onFieldSubmitted: (_) =>
+                    FocusScope.of(context).requestFocus(_confirmPasswordFocus),
                 decoration: InputDecoration(
-                  hintText: 'Nhập mật khẩu',
+                  hintText: 'Tối thiểu 6 ký tự',
                   prefixIcon: Icon(
                     Icons.lock_outline_rounded,
                     color: _passwordFocus.hasFocus
@@ -202,44 +219,49 @@ class _LoginFormState extends State<LoginForm> {
                 },
               ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.05),
 
-              const Gap(12),
+              const Gap(16),
 
-              // ── Remember me ───────────────────────────────
-              Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: Checkbox(
-                      value: _rememberMe,
-                      onChanged: isLoading
-                          ? null
-                          : (v) => setState(() => _rememberMe = v ?? false),
-                      activeColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      side: const BorderSide(
-                        color: AppColors.border,
-                        width: 1.5,
-                      ),
-                    ),
+              // ── Confirm password ──────────────────────────
+              _FieldLabel(label: 'Xác nhận mật khẩu'),
+              const Gap(6),
+              TextFormField(
+                controller: _confirmPasswordCtrl,
+                focusNode: _confirmPasswordFocus,
+                enabled: !isLoading,
+                obscureText: _obscureConfirm,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _submit(ctx),
+                decoration: InputDecoration(
+                  hintText: 'Nhập lại mật khẩu',
+                  prefixIcon: Icon(
+                    Icons.lock_outline_rounded,
+                    color: _confirmPasswordFocus.hasFocus
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    size: 20,
                   ),
-                  const Gap(8),
-                  GestureDetector(
-                    onTap: isLoading
-                        ? null
-                        : () => setState(() => _rememberMe = !_rememberMe),
-                    child: Text(
-                      'Ghi nhớ đăng nhập',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                      ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureConfirm
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: AppColors.textSecondary,
+                      size: 20,
                     ),
+                    onPressed: () =>
+                        setState(() => _obscureConfirm = !_obscureConfirm),
                   ),
-                ],
-              ).animate().fadeIn(delay: 400.ms),
+                ),
+                validator: (v) {
+                  if (v == null || v.isEmpty) {
+                    return 'Vui lòng xác nhận mật khẩu';
+                  }
+                  if (v != _passwordCtrl.text) {
+                    return 'Mật khẩu không khớp';
+                  }
+                  return null;
+                },
+              ).animate().fadeIn(delay: 400.ms).slideX(begin: -0.05),
 
               const Gap(28),
 
@@ -270,7 +292,7 @@ class _LoginFormState extends State<LoginForm> {
                             ),
                           )
                         : Text(
-                            'Đăng nhập',
+                            'Tạo cửa hàng',
                             style: GoogleFonts.dmSans(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -283,7 +305,7 @@ class _LoginFormState extends State<LoginForm> {
 
               const Gap(16),
 
-              // ── Divider ───────────────────────────────────
+              // ── Back to login ─────────────────────────────
               Row(
                 children: [
                   const Expanded(child: Divider()),
@@ -299,15 +321,12 @@ class _LoginFormState extends State<LoginForm> {
                   ),
                   const Expanded(child: Divider()),
                 ],
-              ).animate().fadeIn(delay: 600.ms),
+              ).animate().fadeIn(delay: 550.ms),
 
               const Gap(16),
 
-              // ── Navigate to register ──────────────────────
               OutlinedButton(
-                onPressed: isLoading
-                    ? null
-                    : () => ctx.push(AppRoutes.register),
+                onPressed: isLoading ? null : () => Navigator.of(context).pop(),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
@@ -317,14 +336,14 @@ class _LoginFormState extends State<LoginForm> {
                   foregroundColor: AppColors.textPrimary,
                 ),
                 child: Text(
-                  'Tạo cửa hàng mới',
+                  'Quay lại đăng nhập',
                   style: GoogleFonts.dmSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: AppColors.textPrimary,
                   ),
                 ),
-              ).animate().fadeIn(delay: 650.ms),
+              ).animate().fadeIn(delay: 600.ms),
             ],
           ),
         );
