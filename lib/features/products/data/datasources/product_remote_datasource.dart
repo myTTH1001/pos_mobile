@@ -89,7 +89,9 @@ class ProductRemoteDatasourceImpl implements ProductRemoteDatasource {
         'limit': limit,
         'offset': offset,
         if (search != null && search.isNotEmpty) 'search': search,
+        // ignore: use_null_aware_elements
         if (minPrice != null) 'min_price': minPrice,
+        // ignore: use_null_aware_elements
         if (maxPrice != null) 'max_price': maxPrice,
       },
     );
