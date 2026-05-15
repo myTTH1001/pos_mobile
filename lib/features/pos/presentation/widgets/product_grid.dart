@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../products/domain/entities/product_entity.dart';
 import '../bloc/pos_bloc.dart';
 import '../bloc/product_bloc.dart';
+import '../../../../core/constants/api_constants.dart';
 
 class ProductGrid extends StatelessWidget {
   const ProductGrid({super.key});
@@ -288,10 +289,13 @@ class _ProductImage extends StatelessWidget {
   Widget build(BuildContext context) {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       // Nếu imageUrl là relative path (vd: /uploads/abc.jpg), cần ghép baseUrl
-      final fullUrl = imageUrl!.startsWith('http')
+      final fixedPath = imageUrl!.startsWith('/uploads/')
           ? imageUrl!
-          : 'http://192.168.100.101:8000$imageUrl';
+          : '/uploads/$imageUrl';
 
+      final fullUrl = fixedPath.startsWith('http')
+          ? fixedPath
+          : '${ApiConstants.baseUrl.replaceAll('/api', '')}$fixedPath';
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image.network(

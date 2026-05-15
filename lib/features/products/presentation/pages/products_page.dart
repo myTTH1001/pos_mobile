@@ -281,7 +281,7 @@ class _ProductList extends StatelessWidget {
       controller: scrollCtrl,
       padding: const EdgeInsets.all(16),
       itemCount: products.length + (hasMore ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (ctx, i) {
         if (i == products.length) {
           return const _LoadMoreIndicator();
@@ -299,7 +299,7 @@ class _ProductList extends StatelessWidget {
         maxCrossAxisExtent: 220,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.78,
+        childAspectRatio: 0.68,
       ),
       itemCount: products.length + (hasMore ? 1 : 0),
       itemBuilder: (ctx, i) {
@@ -512,17 +512,17 @@ class _ProductThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
+      final baseUrl = ApiConstants.baseUrl.replaceAll('/api', '');
       final fullUrl = imageUrl!.startsWith('http')
           ? imageUrl!
-          : '${ApiConstants.baseUrl.replaceAll('/api', '')}$imageUrl';
-
+          : '$baseUrl/uploads/$imageUrl';
+      debugPrint(fullUrl);
       return Image.network(
         fullUrl,
         width: isSquare ? double.infinity : size,
         height: isSquare ? double.infinity : size,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            _Placeholder(size: size, isSquare: isSquare),
+        errorBuilder: (_, _, _) => _Placeholder(size: size, isSquare: isSquare),
         loadingBuilder: (_, child, progress) => progress == null
             ? child
             : _Placeholder(size: size, isSquare: isSquare),
@@ -835,14 +835,19 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final screenHeight = MediaQuery.sizeOf(context).height;
+
     return Dialog(
+      insetPadding: EdgeInsets.fromLTRB(16, 24, 16, viewInsets.bottom + 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: screenHeight * 0.88,
+        ),
         child: SingleChildScrollView(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
+          padding: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Form(
@@ -1088,7 +1093,7 @@ class _ImagePicker extends StatelessWidget {
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _pickerPlaceholder(),
+                  errorBuilder: (_, _, _) => _pickerPlaceholder(),
                 ),
               )
             else
@@ -1190,95 +1195,103 @@ class _DeleteConfirmDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.delete_rounded,
-                size: 30,
-                color: AppColors.error,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Xóa sản phẩm?',
-              style: GoogleFonts.dmSans(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Bạn sắp xóa "${product.name}". Hành động này không thể hoàn tác.',
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      side: const BorderSide(color: AppColors.border),
-                    ),
-                    child: Text(
-                      'Hủy',
-                      style: GoogleFonts.dmSans(color: AppColors.textSecondary),
-                    ),
-                  ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: BlocBuilder<ProductsBloc, ProductsState>(
-                    buildWhen: (p, c) => p.actionStatus != c.actionStatus,
-                    builder: (ctx, state) => ElevatedButton(
-                      onPressed:
-                          state.actionStatus == ProductsActionStatus.loading
-                          ? null
-                          : () {
-                              ctx.read<ProductsBloc>().add(
-                                ProductDeleteRequested(product.id),
-                              );
-                              Navigator.pop(context);
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.error,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
+                child: const Icon(
+                  Icons.delete_rounded,
+                  size: 30,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Xóa sản phẩm?',
+                style: GoogleFonts.dmSans(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Bạn sắp xóa "${product.name}". Hành động này không thể hoàn tác.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
+                        side: const BorderSide(color: AppColors.border),
                       ),
                       child: Text(
-                        'Xóa',
-                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+                        'Hủy',
+                        style: GoogleFonts.dmSans(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: BlocBuilder<ProductsBloc, ProductsState>(
+                      buildWhen: (p, c) => p.actionStatus != c.actionStatus,
+                      builder: (ctx, state) => ElevatedButton(
+                        onPressed:
+                            state.actionStatus == ProductsActionStatus.loading
+                            ? null
+                            : () {
+                                ctx.read<ProductsBloc>().add(
+                                  ProductDeleteRequested(product.id),
+                                );
+                                Navigator.pop(context);
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          'Xóa',
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

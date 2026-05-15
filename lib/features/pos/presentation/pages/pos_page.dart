@@ -52,10 +52,10 @@ class _PosViewState extends State<_PosView>
           showDialog(
             context: ctx,
             barrierDismissible: false,
-            builder: (_) => SuccessDialog(
+            builder: (dialogCtx) => SuccessDialog(
               order: state.completedOrder!,
               onNewOrder: () {
-                Navigator.pop(ctx);
+                Navigator.pop(dialogCtx);
                 ctx.read<PosBloc>().add(const PosReset());
               },
             ),

@@ -85,7 +85,7 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       // Dùng getProducts với limit lớn để lấy toàn bộ cho POS grid
       final page = await _repo.getProducts(
         search: state.query.isEmpty ? null : state.query,
-        limit: 200,
+        limit: 100,
         offset: 0,
       );
       emit(
