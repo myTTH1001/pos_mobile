@@ -82,12 +82,17 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   ) async {
     emit(state.copyWith(status: ProductStatus.loading));
     try {
-      final products = await _repo.getProducts();
+      // Dùng getProducts với limit lớn để lấy toàn bộ cho POS grid
+      final page = await _repo.getProducts(
+        search: state.query.isEmpty ? null : state.query,
+        limit: 200,
+        offset: 0,
+      );
       emit(
         state.copyWith(
           status: ProductStatus.success,
-          products: products,
-          filteredProducts: products,
+          products: page.items,
+          filteredProducts: page.items,
         ),
       );
     } catch (e) {
@@ -101,6 +106,7 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   }
 
   void _onSearch(ProductSearchChanged event, Emitter<ProductState> emit) {
+    // Search client-side để không gọi API mỗi keystroke trên POS
     final q = event.query.toLowerCase();
     final filtered = state.products
         .where((p) => p.name.toLowerCase().contains(q))
