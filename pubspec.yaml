@@ -44,6 +44,7 @@ dependencies:
   # State management
   flutter_bloc: ^8.1.4
   equatable: ^2.0.5
+  intl: ^0.19.0
 
   # Storage
   flutter_secure_storage: ^9.0.0
