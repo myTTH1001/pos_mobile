@@ -906,7 +906,7 @@ class _DayRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  DateFormat('MMM', 'vi').format(day.date),
+                  _monthVi(day.date.month),
                   style: GoogleFonts.dmSans(
                     fontSize: 10,
                     color: AppColors.textSecondary,
@@ -921,7 +921,7 @@ class _DayRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  DateFormat('EEEE', 'vi_VN').format(day.date),
+                  _weekdayVi(day.date.weekday),
                   style: GoogleFonts.dmSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -1842,7 +1842,7 @@ String _fmtMoney(double v) {
     if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
     buf.write(s[i]);
   }
-  return '${buf}đ';
+  return '$bufđ';
 }
 
 String _fmtMoneyShort(double v) {
@@ -1855,3 +1855,32 @@ String _fmtMoneyShort(double v) {
 String _fmtDate(DateTime dt) => DateFormat('dd/MM/yyyy').format(dt);
 
 String _fmtDateShort(DateTime dt) => DateFormat('dd/MM').format(dt);
+
+String _weekdayVi(int weekday) =>
+    const {
+      1: 'Thứ Hai',
+      2: 'Thứ Ba',
+      3: 'Thứ Tư',
+      4: 'Thứ Năm',
+      5: 'Thứ Sáu',
+      6: 'Thứ Bảy',
+      7: 'Chủ Nhật',
+    }[weekday] ??
+    '';
+
+String _monthVi(int month) =>
+    const {
+      1: 'Th1',
+      2: 'Th2',
+      3: 'Th3',
+      4: 'Th4',
+      5: 'Th5',
+      6: 'Th6',
+      7: 'Th7',
+      8: 'Th8',
+      9: 'Th9',
+      10: 'Th10',
+      11: 'Th11',
+      12: 'Th12',
+    }[month] ??
+    '';
