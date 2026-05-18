@@ -29,7 +29,6 @@ class PosState extends Equatable {
   final Order? completedOrder;
   final String? errorMessage;
 
-  // Computed
   List<CartItem> get cartItems => cart.values.toList();
   int get itemCount => cart.values.fold(0, (sum, e) => sum + e.quantity);
   double get grandTotal => cart.values.fold(0, (sum, e) => sum + e.subtotal);
@@ -39,12 +38,18 @@ class PosState extends Equatable {
     Map<int, CartItem>? cart,
     PosStatus? status,
     Order? completedOrder,
+    bool clearCompletedOrder = false, // thêm flag này
     String? errorMessage,
+    bool clearErrorMessage = false, // thêm flag này
   }) => PosState(
     cart: cart ?? this.cart,
     status: status ?? this.status,
-    completedOrder: completedOrder ?? this.completedOrder,
-    errorMessage: errorMessage ?? this.errorMessage,
+    completedOrder: clearCompletedOrder
+        ? null
+        : (completedOrder ?? this.completedOrder),
+    errorMessage: clearErrorMessage
+        ? null
+        : (errorMessage ?? this.errorMessage),
   );
 
   @override

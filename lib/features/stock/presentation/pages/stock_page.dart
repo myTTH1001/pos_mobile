@@ -1088,7 +1088,7 @@ class _MovementCard extends StatelessWidget {
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: movement.quantity > 0
-                    ? AppColors.success.withValues(alpha: 0.1)
+                    ? AppColors.success
                     : AppColors.error,
               ),
             ),

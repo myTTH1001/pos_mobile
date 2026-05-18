@@ -1,3 +1,4 @@
+// lib/features/orders/data/datasources/order_remote_datasource.dart
 import 'package:dio/dio.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/dio_client.dart';
@@ -29,12 +30,14 @@ class OrderRemoteDatasourceImpl implements OrderRemoteDatasource {
 
   @override
   Future<OrderModel> payOrder(int orderId, String paymentMethod) async {
-    final res = await _dio.post(
+    // Bước 1: Tạo invoice (backend trả về Invoice, không phải Order)
+    await _dio.post(
       '${ApiConstants.invoices}/$orderId',
       data: {'payment_method': paymentMethod},
     );
-    // backend trả về invoice — load lại order từ confirm result đã có
-    // Trả về order đã confirm (đã có invoice)
-    return OrderModel.fromJson(res.data as Map<String, dynamic>);
+
+    // Bước 2: Load lại order đầy đủ (có invoice embedded) để UI hiển thị đúng
+    final orderRes = await _dio.get('${ApiConstants.orders}/$orderId');
+    return OrderModel.fromJson(orderRes.data as Map<String, dynamic>);
   }
 }

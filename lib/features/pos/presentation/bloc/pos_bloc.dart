@@ -104,6 +104,7 @@ class PosBloc extends Bloc<PosEvent, PosState> {
         state.copyWith(
           status: PosStatus.error,
           errorMessage: e.toString().replaceFirst('Exception: ', ''),
+          clearCompletedOrder: true,
         ),
       );
     }
