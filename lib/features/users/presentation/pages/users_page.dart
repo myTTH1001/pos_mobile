@@ -1,4 +1,12 @@
 // lib/features/users/presentation/pages/users_page.dart
+//
+// Phân quyền đầy đủ:
+//   • Danh sách user kèm role hiện tại
+//   • Tap vào user → bottom sheet chi tiết: xem role, gán thêm role, xóa role
+//   • Tạo user mới với role
+//   • Bật/tắt tài khoản, xóa user
+//   • Owner không thể bị sửa bởi manager
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,7 +17,7 @@ import '../../data/models/user_model.dart';
 import '../bloc/users_bloc.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENTRY POINT
+// ENTRY
 // ─────────────────────────────────────────────────────────────────────────────
 
 class UsersPage extends StatelessWidget {
@@ -71,9 +79,7 @@ class _UsersView extends StatelessWidget {
                           ctx.read<UsersBloc>().add(const UsersLoadRequested()),
                     );
                   }
-                  if (state.users.isEmpty) {
-                    return const _EmptyBody();
-                  }
+                  if (state.users.isEmpty) return const _EmptyBody();
                   return RefreshIndicator(
                     color: AppColors.primary,
                     onRefresh: () async =>
@@ -204,181 +210,627 @@ class _UserCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            // ── Avatar ─────────────────────────────────────
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: cfg.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  user.username[0].toUpperCase(),
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: cfg.color,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showUserDetail(context, user),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              // Avatar
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: cfg.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    user.username[0].toUpperCase(),
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: cfg.color,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            // ── Info ────────────────────────────────────────
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user.username,
-                    style: GoogleFonts.dmSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      // Role badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cfg.color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          cfg.label,
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          user.username,
                           style: GoogleFonts.dmSans(
-                            fontSize: 11,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: cfg.color,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Status badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: user.isActive
-                              ? AppColors.success.withValues(alpha: 0.1)
-                              : AppColors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 5,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: user.isActive
-                                    ? AppColors.success
-                                    : AppColors.error,
-                                shape: BoxShape.circle,
-                              ),
+                        if (!user.isActive) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              user.isActive ? 'Hoạt động' : 'Đã khóa',
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Đã khóa',
                               style: GoogleFonts.dmSans(
-                                fontSize: 11,
+                                fontSize: 10,
+                                color: AppColors.error,
                                 fontWeight: FontWeight.w600,
-                                color: user.isActive
-                                    ? AppColors.success
-                                    : AppColors.error,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Role badges
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: user.roles.map((role) {
+                        final rc = _roleConfig(role);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: rc.color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            rc.label,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: rc.color,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // ── Actions (ẩn với owner) ──────────────────────
-            if (!isOwner)
-              _CardActions(user: user)
-            else
-              const SizedBox(width: 8),
-          ],
+              // Chevron / shield for owner
+              if (isOwner)
+                const Icon(
+                  Icons.shield_rounded,
+                  size: 20,
+                  color: Color(0xFF1A56DB),
+                )
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: AppColors.textHint,
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _CardActions extends StatelessWidget {
-  const _CardActions({required this.user});
+// ─────────────────────────────────────────────────────────────────────────────
+// USER DETAIL BOTTOM SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _showUserDetail(BuildContext context, UserModel user) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => BlocProvider.value(
+      value: context.read<UsersBloc>(),
+      child: _UserDetailSheet(user: user),
+    ),
+  );
+}
+
+class _UserDetailSheet extends StatelessWidget {
+  const _UserDetailSheet({required this.user});
   final UserModel user;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    final isOwner = user.roles.contains('owner');
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: _roleConfig(
+                    user.primaryRole,
+                  ).color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    user.username[0].toUpperCase(),
+                    style: GoogleFonts.dmSans(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: _roleConfig(user.primaryRole).color,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.username,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: user.isActive
+                                ? AppColors.success
+                                : AppColors.error,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          user.isActive ? 'Đang hoạt động' : 'Đã bị khóa',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            color: user.isActive
+                                ? AppColors.success
+                                : AppColors.error,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+                color: AppColors.textSecondary,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.border),
+          const SizedBox(height: 16),
+
+          // ── Phân quyền ─────────────────────────────────────────
+          Text(
+            'Phân quyền',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Current roles
+          BlocBuilder<UsersBloc, UsersState>(
+            buildWhen: (p, c) => p.users != c.users,
+            builder: (ctx, state) {
+              // Lấy user mới nhất từ state (có thể đã cập nhật)
+              final currentUser = state.users.firstWhere(
+                (u) => u.id == user.id,
+                orElse: () => user,
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Role hiện tại
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: currentUser.roles.map((role) {
+                      final rc = _roleConfig(role);
+                      final canRemove =
+                          !isOwner &&
+                          role != 'owner' &&
+                          currentUser.roles.length > 1;
+                      return _RoleBadge(
+                        role: role,
+                        config: rc,
+                        canRemove: canRemove,
+                        onRemove: canRemove
+                            ? () => _confirmRemoveRole(
+                                context,
+                                currentUser,
+                                role,
+                                state.roles,
+                              )
+                            : null,
+                      );
+                    }).toList(),
+                  ),
+
+                  // Gán thêm role (chỉ hiện nếu không phải owner và còn role chưa gán)
+                  if (!isOwner) ...[
+                    const SizedBox(height: 12),
+                    _AssignRoleSection(
+                      user: currentUser,
+                      allRoles: state.roles,
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.border),
+          const SizedBox(height: 16),
+
+          // ── Hành động tài khoản ────────────────────────────────
+          if (!isOwner) ...[
+            Text(
+              'Tài khoản',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            BlocBuilder<UsersBloc, UsersState>(
+              buildWhen: (p, c) =>
+                  p.users != c.users || p.actionStatus != c.actionStatus,
+              builder: (ctx, state) {
+                final currentUser = state.users.firstWhere(
+                  (u) => u.id == user.id,
+                  orElse: () => user,
+                );
+                final isLoading =
+                    state.actionStatus == UsersActionStatus.loading;
+                return Row(
+                  children: [
+                    // Toggle active
+                    Expanded(
+                      child: _ActionButton(
+                        icon: currentUser.isActive
+                            ? Icons.lock_outline_rounded
+                            : Icons.lock_open_rounded,
+                        label: currentUser.isActive
+                            ? 'Khóa tài khoản'
+                            : 'Mở khóa',
+                        color: currentUser.isActive
+                            ? AppColors.warning
+                            : AppColors.success,
+                        loading: isLoading,
+                        onTap: () => _confirmToggle(context, currentUser),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Delete
+                    Expanded(
+                      child: _ActionButton(
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Xóa tài khoản',
+                        color: AppColors.error,
+                        loading: isLoading,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _confirmDelete(context, currentUser);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ] else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.shield_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Tài khoản chủ cửa hàng — không thể chỉnh sửa',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Role Badge (có nút xóa) ───────────────────────────────────────────────────
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({
+    required this.role,
+    required this.config,
+    required this.canRemove,
+    this.onRemove,
+  });
+  final String role;
+  final _RoleConfig config;
+  final bool canRemove;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 10,
+        top: 6,
+        bottom: 6,
+        right: canRemove ? 4 : 10,
+      ),
+      decoration: BoxDecoration(
+        color: config.color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: config.color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(config.icon, size: 14, color: config.color),
+          const SizedBox(width: 6),
+          Text(
+            config.label,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: config.color,
+            ),
+          ),
+          if (canRemove) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: config.color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.close_rounded, size: 12, color: config.color),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Assign Role Section ───────────────────────────────────────────────────────
+
+class _AssignRoleSection extends StatelessWidget {
+  const _AssignRoleSection({required this.user, required this.allRoles});
+  final UserModel user;
+  final List<RoleModel> allRoles;
+
+  @override
+  Widget build(BuildContext context) {
+    // Roles chưa được gán cho user (loại trừ 'owner')
+    final assignable = allRoles
+        .where((r) => r.name != 'owner' && !user.roles.contains(r.name))
+        .toList();
+
+    if (assignable.isEmpty) {
+      return Text(
+        'Đã gán tất cả các quyền có thể',
+        style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.textHint),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Bật / tắt
-        _IconBtn(
-          icon: user.isActive
-              ? Icons.lock_outline_rounded
-              : Icons.lock_open_rounded,
-          color: user.isActive ? AppColors.warning : AppColors.success,
-          tooltip: user.isActive ? 'Khóa tài khoản' : 'Mở khóa',
-          onTap: () => _confirmToggle(context, user),
+        Text(
+          'Gán thêm quyền:',
+          style: GoogleFonts.dmSans(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-        const SizedBox(width: 6),
-        // Xóa
-        _IconBtn(
-          icon: Icons.delete_outline_rounded,
-          color: AppColors.error,
-          tooltip: 'Xóa tài khoản',
-          onTap: () => _confirmDelete(context, user),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: assignable.map((role) {
+            final rc = _roleConfig(role.name);
+            return GestureDetector(
+              onTap: () => _assignRole(context, user, role),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 14, color: rc.color),
+                    const SizedBox(width: 4),
+                    Text(
+                      rc.label,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
   }
 }
 
-class _IconBtn extends StatelessWidget {
-  const _IconBtn({
+void _assignRole(BuildContext context, UserModel user, RoleModel role) {
+  context.read<UsersBloc>().add(
+    UserAssignRoleRequested(userId: user.id, roleId: role.id),
+  );
+}
+
+void _confirmRemoveRole(
+  BuildContext context,
+  UserModel user,
+  String roleName,
+  List<RoleModel> allRoles,
+) {
+  final roleModel = allRoles.firstWhere(
+    (r) => r.name == roleName,
+    orElse: () => RoleModel(id: 0, name: roleName, permissions: []),
+  );
+  if (roleModel.id == 0) return;
+  final rc = _roleConfig(roleName);
+
+  showDialog(
+    context: context,
+    builder: (_) => BlocProvider.value(
+      value: context.read<UsersBloc>(),
+      child: _ConfirmDialog(
+        icon: Icons.remove_circle_outline_rounded,
+        iconColor: AppColors.error,
+        title: 'Xóa quyền ${rc.label}?',
+        message: 'Bỏ quyền "${rc.label}" khỏi tài khoản "${user.username}".',
+        confirmLabel: 'Xóa quyền',
+        confirmColor: AppColors.error,
+        onConfirm: (ctx) {
+          ctx.read<UsersBloc>().add(
+            UserRemoveRoleRequested(userId: user.id, roleId: roleModel.id),
+          );
+          Navigator.pop(ctx);
+        },
+      ),
+    ),
+  );
+}
+
+// ── Action Button ─────────────────────────────────────────────────────────────
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
     required this.icon,
+    required this.label,
     required this.color,
-    required this.tooltip,
     required this.onTap,
+    this.loading = false,
   });
   final IconData icon;
+  final String label;
   final Color color;
-  final String tooltip;
   final VoidCallback onTap;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 18, color: color),
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -409,7 +861,7 @@ class _AddFab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BOTTOM SHEET: TẠO NHÂN VIÊN
+// CREATE USER SHEET
 // ─────────────────────────────────────────────────────────────────────────────
 
 void _showCreateSheet(BuildContext context) {
@@ -424,7 +876,6 @@ void _showCreateSheet(BuildContext context) {
   );
 }
 
-// Role có thể gán (owner bị loại — nhất quán với backend)
 const _assignableRoles = ['manager', 'staff', 'cashier'];
 
 class _CreateUserSheet extends StatefulWidget {
@@ -451,7 +902,6 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
   void _submit(BuildContext ctx) {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-
     ctx.read<UsersBloc>().add(
       UserCreateRequested(
         username: _usernameCtrl.text.trim(),
@@ -468,9 +918,7 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
     return BlocListener<UsersBloc, UsersState>(
       listenWhen: (p, c) => p.actionStatus != c.actionStatus,
       listener: (ctx, state) {
-        if (state.actionStatus == UsersActionStatus.success) {
-          Navigator.pop(ctx);
-        }
+        if (state.actionStatus == UsersActionStatus.success) Navigator.pop(ctx);
       },
       child: Container(
         decoration: const BoxDecoration(
@@ -484,7 +932,6 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 36,
@@ -496,8 +943,6 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Header
               Row(
                 children: [
                   Container(
@@ -534,7 +979,6 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
               ),
               const SizedBox(height: 20),
 
-              // Username
               _SheetLabel('Tên đăng nhập'),
               const SizedBox(height: 6),
               TextFormField(
@@ -549,18 +993,14 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
                 ],
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
+                  if (v == null || v.trim().isEmpty)
                     return 'Vui lòng nhập tên đăng nhập';
-                  }
-                  if (v.trim().length < 3) {
-                    return 'Tối thiểu 3 ký tự';
-                  }
+                  if (v.trim().length < 3) return 'Tối thiểu 3 ký tự';
                   return null;
                 },
               ),
               const SizedBox(height: 14),
 
-              // Password
               _SheetLabel('Mật khẩu'),
               const SizedBox(height: 6),
               TextFormField(
@@ -590,9 +1030,8 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
               ),
               const SizedBox(height: 14),
 
-              // Role selector
-              _SheetLabel('Vai trò'),
-              const SizedBox(height: 6),
+              _SheetLabel('Vai trò mặc định'),
+              const SizedBox(height: 8),
               Row(
                 children: _assignableRoles.map((role) {
                   final cfg = _roleConfig(role);
@@ -636,6 +1075,7 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
                                       ? cfg.color
                                       : AppColors.textSecondary,
                                 ),
+                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),
@@ -647,7 +1087,6 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
               ),
               const SizedBox(height: 24),
 
-              // Submit
               BlocBuilder<UsersBloc, UsersState>(
                 buildWhen: (p, c) => p.actionStatus != c.actionStatus,
                 builder: (ctx, state) => SizedBox(
@@ -699,16 +1138,14 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
 void _confirmToggle(BuildContext context, UserModel user) {
   final action = user.isActive ? 'khóa' : 'mở khóa';
   final color = user.isActive ? AppColors.warning : AppColors.success;
-  final icon = user.isActive
-      ? Icons.lock_outline_rounded
-      : Icons.lock_open_rounded;
-
   showDialog(
     context: context,
     builder: (_) => BlocProvider.value(
       value: context.read<UsersBloc>(),
       child: _ConfirmDialog(
-        icon: icon,
+        icon: user.isActive
+            ? Icons.lock_outline_rounded
+            : Icons.lock_open_rounded,
         iconColor: color,
         title: '${action[0].toUpperCase()}${action.substring(1)} tài khoản?',
         message: 'Bạn sắp $action tài khoản "${user.username}".',

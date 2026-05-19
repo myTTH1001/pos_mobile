@@ -12,6 +12,7 @@ import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_shell.dart';
 import '../../features/pos/presentation/pages/pos_page.dart';
 import '../../features/products/presentation/pages/products_page.dart';
+import '../../features/orders/presentation/pages/orders_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/stock/presentation/pages/stock_page.dart';
 import '../../features/users/presentation/pages/users_page.dart';
@@ -81,6 +82,15 @@ GoRouter createRouter(AuthBloc authBloc) {
                 path: AppRoutes.products,
                 name: 'products',
                 builder: (context, state) => const ProductsPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.orders,
+                name: 'orders',
+                builder: (context, state) => const OrdersPage(),
               ),
             ],
           ),

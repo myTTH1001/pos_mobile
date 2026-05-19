@@ -49,6 +49,24 @@ class UserDeleteRequested extends UsersEvent {
   List<Object?> get props => [userId];
 }
 
+/// Gán thêm role cho user
+class UserAssignRoleRequested extends UsersEvent {
+  const UserAssignRoleRequested({required this.userId, required this.roleId});
+  final int userId;
+  final int roleId;
+  @override
+  List<Object?> get props => [userId, roleId];
+}
+
+/// Xóa role khỏi user
+class UserRemoveRoleRequested extends UsersEvent {
+  const UserRemoveRoleRequested({required this.userId, required this.roleId});
+  final int userId;
+  final int roleId;
+  @override
+  List<Object?> get props => [userId, roleId];
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
 enum UsersStatus { initial, loading, success, failure }
@@ -108,11 +126,13 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     on<UserCreateRequested>(_onCreate);
     on<UserToggleStatusRequested>(_onToggleStatus);
     on<UserDeleteRequested>(_onDelete);
+    on<UserAssignRoleRequested>(_onAssignRole);
+    on<UserRemoveRoleRequested>(_onRemoveRole);
   }
 
   final _remote = UsersRemoteDatasource();
 
-  // ── Load users + roles song song ─────────────────────────────────────────
+  // ── Load users + roles ────────────────────────────────────────────────────
 
   Future<void> _onLoad(
     UsersLoadRequested event,
@@ -139,7 +159,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     }
   }
 
-  // ── Create user ──────────────────────────────────────────────────────────
+  // ── Create ────────────────────────────────────────────────────────────────
 
   Future<void> _onCreate(
     UserCreateRequested event,
@@ -169,7 +189,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     }
   }
 
-  // ── Toggle active/inactive ───────────────────────────────────────────────
+  // ── Toggle status ─────────────────────────────────────────────────────────
 
   Future<void> _onToggleStatus(
     UserToggleStatusRequested event,
@@ -178,16 +198,18 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     emit(state.copyWith(actionStatus: UsersActionStatus.loading));
     try {
       await _remote.toggleUserStatus(event.userId, isActive: event.isActive);
-      final updated = state.users.map((u) {
-        return u.id == event.userId
-            ? UserModel(
-                id: u.id,
-                username: u.username,
-                isActive: event.isActive,
-                roles: u.roles,
-              )
-            : u;
-      }).toList();
+      final updated = state.users
+          .map(
+            (u) => u.id == event.userId
+                ? UserModel(
+                    id: u.id,
+                    username: u.username,
+                    isActive: event.isActive,
+                    roles: u.roles,
+                  )
+                : u,
+          )
+          .toList();
       emit(
         state.copyWith(
           actionStatus: UsersActionStatus.success,
@@ -205,7 +227,7 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     }
   }
 
-  // ── Delete user ──────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────
 
   Future<void> _onDelete(
     UserDeleteRequested event,
@@ -215,6 +237,94 @@ class UsersBloc extends Bloc<UsersEvent, UsersState> {
     try {
       await _remote.deleteUser(event.userId);
       final updated = state.users.where((u) => u.id != event.userId).toList();
+      emit(
+        state.copyWith(
+          actionStatus: UsersActionStatus.success,
+          users: updated,
+          clearActionError: true,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          actionStatus: UsersActionStatus.failure,
+          actionError: _clean(e),
+        ),
+      );
+    }
+  }
+
+  // ── Assign role ───────────────────────────────────────────────────────────
+
+  Future<void> _onAssignRole(
+    UserAssignRoleRequested event,
+    Emitter<UsersState> emit,
+  ) async {
+    emit(state.copyWith(actionStatus: UsersActionStatus.loading));
+    try {
+      final role = state.roles.firstWhere((r) => r.id == event.roleId);
+
+      // store_id được datasource tự đọc từ JWT token
+      await _remote.assignRole(userId: event.userId, roleId: event.roleId);
+
+      // Cập nhật local: thêm role vào user
+      final updated = state.users.map((u) {
+        if (u.id == event.userId) {
+          return UserModel(
+            id: u.id,
+            username: u.username,
+            isActive: u.isActive,
+            roles: [...u.roles, role.name],
+          );
+        }
+        return u;
+      }).toList();
+
+      emit(
+        state.copyWith(
+          actionStatus: UsersActionStatus.success,
+          users: updated,
+          clearActionError: true,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          actionStatus: UsersActionStatus.failure,
+          actionError: _clean(e),
+        ),
+      );
+    }
+  }
+
+  // ── Remove role ───────────────────────────────────────────────────────────
+
+  Future<void> _onRemoveRole(
+    UserRemoveRoleRequested event,
+    Emitter<UsersState> emit,
+  ) async {
+    emit(state.copyWith(actionStatus: UsersActionStatus.loading));
+    try {
+      await _remote.removeRole(userId: event.userId, roleId: event.roleId);
+
+      final role = state.roles.firstWhere(
+        (r) => r.id == event.roleId,
+        orElse: () => RoleModel(id: event.roleId, name: '', permissions: []),
+      );
+
+      // Cập nhật local: xóa role khỏi user
+      final updated = state.users.map((u) {
+        if (u.id == event.userId) {
+          return UserModel(
+            id: u.id,
+            username: u.username,
+            isActive: u.isActive,
+            roles: u.roles.where((r) => r != role.name).toList(),
+          );
+        }
+        return u;
+      }).toList();
+
       emit(
         state.copyWith(
           actionStatus: UsersActionStatus.success,
