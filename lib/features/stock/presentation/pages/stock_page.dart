@@ -1,11 +1,11 @@
 // lib/features/stock/presentation/pages/stock_page.dart
 //
-// Màn hình Quản lý kho — nghiệp vụ đầy đủ:
-//   • Tab Tồn kho: danh sách sản phẩm + số lượng hiện tại
-//   • Tab Lịch sử: StockMovement (IMPORT / SALE / RETURN / ADJUST / TRANSFER)
-//   • Bottom sheet Nhập kho (POST /stock/import)
-//   • Bottom sheet Điều chỉnh tồn (POST /stock/adjust)
-//   • Pull-to-refresh, search, filter type
+// FIX: Sản phẩm mới tạo không hiển thị trong kho vì API /stock/ chỉ trả về
+//      sản phẩm đã có bản ghi trong bảng stocks.
+// SOLUTION: Gọi song song /products + /stock/, merge theo product_id.
+//           Sản phẩm chưa có bản ghi kho → quantity = 0.
+//
+// THÊM MỚI: Summary bar — tổng SP / còn hàng / sắp hết / hết hàng
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,14 +22,55 @@ import '../../../../core/theme/app_colors.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class StockItem {
-  const StockItem({required this.productId, required this.quantity});
+  const StockItem({
+    required this.productId,
+    required this.productName,
+    required this.quantity,
+  });
+
   final int productId;
+  final String productName;
   final int quantity;
 
-  factory StockItem.fromJson(Map<String, dynamic> j) => StockItem(
-    productId: j['product_id'] as int,
-    quantity: j['quantity'] as int? ?? 0,
+  // Merge constructor: product + optional stock record
+  factory StockItem.fromMerge({
+    required int productId,
+    required String productName,
+    required int quantity,
+  }) => StockItem(
+    productId: productId,
+    productName: productName,
+    quantity: quantity,
   );
+}
+
+class StockSummary {
+  const StockSummary({
+    required this.total,
+    required this.inStock,
+    required this.lowStock,
+    required this.outOfStock,
+  });
+
+  final int total;
+  final int inStock;
+  final int lowStock;
+  final int outOfStock;
+
+  factory StockSummary.fromList(List<StockItem> items) {
+    final total = items.length;
+    final outOfStock = items.where((i) => i.quantity == 0).length;
+    final lowStock = items
+        .where((i) => i.quantity >= 1 && i.quantity <= 5)
+        .length;
+    final inStock = total - outOfStock - lowStock;
+    return StockSummary(
+      total: total,
+      inStock: inStock,
+      lowStock: lowStock,
+      outOfStock: outOfStock,
+    );
+  }
 }
 
 class StockMovement {
@@ -46,7 +87,7 @@ class StockMovement {
   final int id;
   final int productId;
   final int quantity;
-  final String type; // IMPORT | SALE | RETURN | ADJUST | TRANSFER
+  final String type;
   final DateTime createdAt;
   final String? note;
   final String? transferRef;
@@ -70,12 +111,49 @@ class StockMovement {
 class StockRemote {
   final Dio _dio = DioClient.instance.dio;
 
-  Future<List<StockItem>> listStock() async {
-    final res = await _dio.get(ApiConstants.stock);
-    final list = res.data as List<dynamic>? ?? [];
-    return list
-        .map((e) => StockItem.fromJson(e as Map<String, dynamic>))
+  /// Lấy tất cả sản phẩm của store (kể cả chưa có bản ghi kho)
+  Future<List<Map<String, dynamic>>> _fetchAllProducts() async {
+    final res = await _dio.get(
+      ApiConstants.products,
+      queryParameters: {'limit': 100, 'offset': 0},
+    );
+    final data = res.data as Map<String, dynamic>;
+    return (data['items'] as List<dynamic>? ?? [])
+        .map((e) => e as Map<String, dynamic>)
         .toList();
+  }
+
+  /// Lấy bản ghi tồn kho hiện có (chỉ sp đã có giao dịch)
+  Future<List<Map<String, dynamic>>> _fetchStockRecords() async {
+    final res = await _dio.get('${ApiConstants.stock}/');
+    final list = res.data as List<dynamic>? ?? [];
+    return list.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  /// Merge products + stock → trả về list đầy đủ, sp mới quantity=0
+  Future<List<StockItem>> listStock() async {
+    final results = await Future.wait([
+      _fetchAllProducts(),
+      _fetchStockRecords(),
+    ]);
+
+    final products = results[0];
+    final stockRecords = results[1];
+
+    // Build map: product_id → quantity
+    final stockMap = <int, int>{};
+    for (final s in stockRecords) {
+      stockMap[s['product_id'] as int] = s['quantity'] as int? ?? 0;
+    }
+
+    return products.map((p) {
+      final id = p['id'] as int;
+      return StockItem.fromMerge(
+        productId: id,
+        productName: p['name'] as String? ?? '#$id',
+        quantity: stockMap[id] ?? 0,
+      );
+    }).toList();
   }
 
   Future<List<StockMovement>> listMovements({
@@ -89,9 +167,7 @@ class StockRemote {
       queryParameters: {
         'limit': limit,
         'offset': offset,
-        // ignore: use_null_aware_elements
         if (productId != null) 'product_id': productId,
-        // ignore: use_null_aware_elements
         if (movementType != null) 'movement_type': movementType,
       },
     );
@@ -121,36 +197,9 @@ class StockRemote {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRODUCT NAME CACHE (lấy từ /products để hiển thị tên)
+// BLOC
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ProductNameCache {
-  static final Map<int, String> _cache = {};
-
-  static Future<void> prefetch(Dio dio, List<int> ids) async {
-    final missing = ids.where((id) => !_cache.containsKey(id)).toList();
-    if (missing.isEmpty) return;
-    try {
-      final res = await dio.get(
-        ApiConstants.products,
-        queryParameters: {'limit': 100, 'offset': 0},
-      );
-      final items = (res.data['items'] as List<dynamic>? ?? []);
-      for (final item in items) {
-        final m = item as Map<String, dynamic>;
-        _cache[m['id'] as int] = m['name'] as String;
-      }
-    } catch (_) {}
-  }
-
-  static String get(int id) => _cache[id] ?? '#$id';
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BLOC — STOCK
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Events
 abstract class StockEvent {}
 
 class StockLoadRequested extends StockEvent {
@@ -186,7 +235,13 @@ class StockSearchChanged extends StockEvent {
   final String query;
 }
 
-// State
+class StockFilterChanged extends StockEvent {
+  StockFilterChanged(
+    this.filter,
+  ); // 'all' | 'in_stock' | 'low_stock' | 'out_of_stock'
+  final String filter;
+}
+
 enum StockStatus { initial, loading, success, failure }
 
 enum StockActionStatus { idle, loading, success, failure }
@@ -198,6 +253,7 @@ class StockState {
     this.stocks = const [],
     this.movements = const [],
     this.searchQuery = '',
+    this.stockFilter = 'all',
     this.movementTypeFilter,
     this.errorMessage,
     this.actionStatus = StockActionStatus.idle,
@@ -209,20 +265,37 @@ class StockState {
   final List<StockItem> stocks;
   final List<StockMovement> movements;
   final String searchQuery;
+  final String stockFilter; // 'all' | 'in_stock' | 'low_stock' | 'out_of_stock'
   final String? movementTypeFilter;
   final String? errorMessage;
   final StockActionStatus actionStatus;
   final String? actionError;
 
+  StockSummary get summary => StockSummary.fromList(stocks);
+
   List<StockItem> get filteredStocks {
-    if (searchQuery.isEmpty) return stocks;
-    return stocks
-        .where(
-          (s) => _ProductNameCache.get(
-            s.productId,
-          ).toLowerCase().contains(searchQuery.toLowerCase()),
-        )
-        .toList();
+    var list = stocks;
+
+    // Filter by status
+    if (stockFilter == 'in_stock') {
+      list = list.where((s) => s.quantity > 5).toList();
+    } else if (stockFilter == 'low_stock') {
+      list = list.where((s) => s.quantity >= 1 && s.quantity <= 5).toList();
+    } else if (stockFilter == 'out_of_stock') {
+      list = list.where((s) => s.quantity == 0).toList();
+    }
+
+    // Filter by search
+    if (searchQuery.isNotEmpty) {
+      list = list
+          .where(
+            (s) =>
+                s.productName.toLowerCase().contains(searchQuery.toLowerCase()),
+          )
+          .toList();
+    }
+
+    return list;
   }
 
   StockState copyWith({
@@ -231,6 +304,7 @@ class StockState {
     List<StockItem>? stocks,
     List<StockMovement>? movements,
     String? searchQuery,
+    String? stockFilter,
     String? movementTypeFilter,
     bool clearTypeFilter = false,
     String? errorMessage,
@@ -243,6 +317,7 @@ class StockState {
     stocks: stocks ?? this.stocks,
     movements: movements ?? this.movements,
     searchQuery: searchQuery ?? this.searchQuery,
+    stockFilter: stockFilter ?? this.stockFilter,
     movementTypeFilter: clearTypeFilter
         ? null
         : (movementTypeFilter ?? this.movementTypeFilter),
@@ -259,6 +334,7 @@ class StockBloc extends Bloc<StockEvent, StockState> {
     on<StockImportRequested>(_onImport);
     on<StockAdjustRequested>(_onAdjust);
     on<StockSearchChanged>(_onSearch);
+    on<StockFilterChanged>(_onFilterChanged);
   }
 
   final _remote = StockRemote();
@@ -270,11 +346,6 @@ class StockBloc extends Bloc<StockEvent, StockState> {
     emit(state.copyWith(stockStatus: StockStatus.loading));
     try {
       final stocks = await _remote.listStock();
-      // prefetch product names
-      await _ProductNameCache.prefetch(
-        DioClient.instance.dio,
-        stocks.map((s) => s.productId).toList(),
-      );
       emit(state.copyWith(stockStatus: StockStatus.success, stocks: stocks));
     } catch (e) {
       emit(
@@ -301,10 +372,6 @@ class StockBloc extends Bloc<StockEvent, StockState> {
       final movements = await _remote.listMovements(
         movementType: event.typeFilter ?? state.movementTypeFilter,
         limit: 80,
-      );
-      await _ProductNameCache.prefetch(
-        DioClient.instance.dio,
-        movements.map((m) => m.productId).toList(),
       );
       emit(
         state.copyWith(
@@ -339,7 +406,6 @@ class StockBloc extends Bloc<StockEvent, StockState> {
           clearActionError: true,
         ),
       );
-      // reload
       add(StockLoadRequested());
       add(MovementsLoadRequested());
     } catch (e) {
@@ -379,6 +445,10 @@ class StockBloc extends Bloc<StockEvent, StockState> {
 
   void _onSearch(StockSearchChanged event, Emitter<StockState> emit) {
     emit(state.copyWith(searchQuery: event.query));
+  }
+
+  void _onFilterChanged(StockFilterChanged event, Emitter<StockState> emit) {
+    emit(state.copyWith(stockFilter: event.filter));
   }
 
   String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
@@ -484,7 +554,7 @@ class _StockViewState extends State<_StockView>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HEADER + TAB BAR
+// HEADER
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StockHeader extends StatelessWidget {
@@ -546,55 +616,97 @@ class _StockHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Summary chip
+                // Refresh button
                 BlocBuilder<StockBloc, StockState>(
-                  buildWhen: (p, c) => p.stocks != c.stocks,
-                  builder: (_, state) {
-                    final lowStock = state.stocks
-                        .where((s) => s.quantity < 5)
-                        .length;
-                    if (lowStock == 0) return const SizedBox.shrink();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14,
-                            color: AppColors.warning,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$lowStock sắp hết',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.warning,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  buildWhen: (p, c) => p.stockStatus != c.stockStatus,
+                  builder: (ctx, state) => IconButton(
+                    onPressed: state.stockStatus == StockStatus.loading
+                        ? null
+                        : () => ctx.read<StockBloc>().add(StockLoadRequested()),
+                    icon: const Icon(
+                      Icons.refresh_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                    tooltip: 'Tải lại',
+                  ),
                 ),
               ],
             ),
           ),
+
           const SizedBox(height: 12),
+
+          // ── Summary Cards ──────────────────────────────────────────
+          BlocBuilder<StockBloc, StockState>(
+            buildWhen: (p, c) =>
+                p.stocks != c.stocks || p.stockStatus != c.stockStatus,
+            builder: (ctx, state) {
+              final isLoading =
+                  state.stockStatus == StockStatus.loading ||
+                  state.stockStatus == StockStatus.initial;
+              final s = state.summary;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    _SummaryCard(
+                      label: 'Tổng SP',
+                      value: isLoading ? '–' : '${s.total}',
+                      icon: Icons.inventory_2_rounded,
+                      color: const Color(0xFF8B5CF6),
+                      filter: 'all',
+                      currentFilter: state.stockFilter,
+                      onTap: () =>
+                          ctx.read<StockBloc>().add(StockFilterChanged('all')),
+                    ),
+                    const SizedBox(width: 8),
+                    _SummaryCard(
+                      label: 'Còn hàng',
+                      value: isLoading ? '–' : '${s.inStock}',
+                      icon: Icons.check_circle_rounded,
+                      color: AppColors.success,
+                      filter: 'in_stock',
+                      currentFilter: state.stockFilter,
+                      onTap: () => ctx.read<StockBloc>().add(
+                        StockFilterChanged('in_stock'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _SummaryCard(
+                      label: 'Sắp hết',
+                      value: isLoading ? '–' : '${s.lowStock}',
+                      icon: Icons.warning_amber_rounded,
+                      color: AppColors.warning,
+                      filter: 'low_stock',
+                      currentFilter: state.stockFilter,
+                      onTap: () => ctx.read<StockBloc>().add(
+                        StockFilterChanged('low_stock'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _SummaryCard(
+                      label: 'Hết hàng',
+                      value: isLoading ? '–' : '${s.outOfStock}',
+                      icon: Icons.remove_circle_rounded,
+                      color: AppColors.error,
+                      filter: 'out_of_stock',
+                      currentFilter: state.stockFilter,
+                      onTap: () => ctx.read<StockBloc>().add(
+                        StockFilterChanged('out_of_stock'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
           // TabBar
           TabBar(
             controller: tabController,
-            labelColor: AppColors.primary,
+            labelColor: const Color(0xFF8B5CF6),
             unselectedLabelColor: AppColors.textSecondary,
-            indicatorColor: AppColors.primary,
+            indicatorColor: const Color(0xFF8B5CF6),
             indicatorWeight: 2.5,
             labelStyle: GoogleFonts.dmSans(
               fontSize: 14,
@@ -610,6 +722,81 @@ class _StockHeader extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Summary Card (tap để filter) ─────────────────────────────────────────────
+
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.filter,
+    required this.currentFilter,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final String filter;
+  final String currentFilter;
+  final VoidCallback onTap;
+
+  bool get isActive => filter == currentFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive
+                ? color.withValues(alpha: 0.12)
+                : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive ? color : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? color : AppColors.textSecondary,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: GoogleFonts.dmSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: isActive ? color : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: GoogleFonts.dmSans(
+                  fontSize: 10,
+                  color: isActive ? color : AppColors.textSecondary,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -687,7 +874,8 @@ class _StockInventoryTabState extends State<_StockInventoryTab> {
             buildWhen: (p, c) =>
                 p.stockStatus != c.stockStatus ||
                 p.stocks != c.stocks ||
-                p.searchQuery != c.searchQuery,
+                p.searchQuery != c.searchQuery ||
+                p.stockFilter != c.stockFilter,
             builder: (ctx, state) {
               if (state.stockStatus == StockStatus.initial ||
                   state.stockStatus == StockStatus.loading) {
@@ -702,15 +890,23 @@ class _StockInventoryTabState extends State<_StockInventoryTab> {
               }
               final items = state.filteredStocks;
               if (items.isEmpty) {
+                final filterLabel = switch (state.stockFilter) {
+                  'in_stock' => 'còn hàng',
+                  'low_stock' => 'sắp hết hàng',
+                  'out_of_stock' => 'hết hàng',
+                  _ => '',
+                };
                 return _EmptyBody(
                   icon: Icons.warehouse_outlined,
                   message: state.searchQuery.isNotEmpty
                       ? 'Không tìm thấy "${state.searchQuery}"'
+                      : filterLabel.isNotEmpty
+                      ? 'Không có sản phẩm $filterLabel'
                       : 'Chưa có dữ liệu tồn kho',
                 );
               }
               return RefreshIndicator(
-                color: AppColors.primary,
+                color: const Color(0xFF8B5CF6),
                 onRefresh: () async =>
                     ctx.read<StockBloc>().add(StockLoadRequested()),
                 child: ListView.separated(
@@ -734,13 +930,12 @@ class _StockItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = _ProductNameCache.get(item.productId);
-    final isLow = item.quantity < 5;
+    final isLow = item.quantity >= 1 && item.quantity <= 5;
     final isOut = item.quantity == 0;
 
-    Color statusColor;
-    String statusLabel;
-    IconData statusIcon;
+    final Color statusColor;
+    final String statusLabel;
+    final IconData statusIcon;
 
     if (isOut) {
       statusColor = AppColors.error;
@@ -770,12 +965,12 @@ class _StockItemCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _showStockActions(context, item, name),
+        onTap: () => _showStockActions(context, item),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              // Avatar icon
+              // Icon
               Container(
                 width: 46,
                 height: 46,
@@ -791,13 +986,13 @@ class _StockItemCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Name + ID
+              // Name
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name,
+                      item.productName,
                       style: GoogleFonts.dmSans(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -807,25 +1002,32 @@ class _StockItemCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      'ID: ${item.productId}',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
+                    Row(
+                      children: [
+                        Icon(statusIcon, size: 12, color: statusColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusLabel,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
 
-              // Quantity + Status
+              // Quantity
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     '${item.quantity}',
                     style: GoogleFonts.dmSans(
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.w800,
                       color: isOut
                           ? AppColors.error
@@ -834,27 +1036,18 @@ class _StockItemCard extends StatelessWidget {
                           : AppColors.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(statusIcon, size: 11, color: statusColor),
-                      const SizedBox(width: 3),
-                      Text(
-                        statusLabel,
-                        style: GoogleFonts.dmSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'đơn vị',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 10,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
 
-              const SizedBox(width: 8),
-              Icon(
+              const SizedBox(width: 6),
+              const Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
                 color: AppColors.textHint,
@@ -868,7 +1061,7 @@ class _StockItemCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2: LỊCH SỬ NHẬP XUẤT
+// TAB 2: LỊCH SỬ
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _movementTypes = [
@@ -909,27 +1102,26 @@ class _StockMovementsTab extends StatelessWidget {
                           MovementsLoadRequested(typeFilter: value),
                         );
                       },
-                      selectedColor: AppColors.primary.withValues(alpha: 0.12),
-                      checkmarkColor: AppColors.primary,
+                      selectedColor: const Color(
+                        0xFF8B5CF6,
+                      ).withValues(alpha: 0.12),
+                      checkmarkColor: const Color(0xFF8B5CF6),
                       labelStyle: GoogleFonts.dmSans(
                         fontSize: 12,
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w400,
                         color: selected
-                            ? AppColors.primary
+                            ? const Color(0xFF8B5CF6)
                             : AppColors.textSecondary,
                       ),
                       backgroundColor: AppColors.surfaceAlt,
                       side: BorderSide(
                         color: selected
-                            ? AppColors.primary
+                            ? const Color(0xFF8B5CF6)
                             : Colors.transparent,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 0,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                   );
                 }).toList(),
@@ -964,15 +1156,20 @@ class _StockMovementsTab extends StatelessWidget {
                 );
               }
               return RefreshIndicator(
-                color: AppColors.primary,
+                color: const Color(0xFF8B5CF6),
                 onRefresh: () async => ctx.read<StockBloc>().add(
                   MovementsLoadRequested(refresh: true),
                 ),
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: state.movements.length,
-                  itemBuilder: (_, i) =>
-                      _MovementCard(movement: state.movements[i]),
+                  itemBuilder: (_, i) => _MovementCard(
+                    movement: state.movements[i],
+                    productName: _productNameFromStocks(
+                      context,
+                      state.movements[i].productId,
+                    ),
+                  ),
                 ),
               );
             },
@@ -981,16 +1178,25 @@ class _StockMovementsTab extends StatelessWidget {
       ],
     );
   }
+
+  String _productNameFromStocks(BuildContext context, int productId) {
+    try {
+      final stocks = context.read<StockBloc>().state.stocks;
+      final found = stocks.where((s) => s.productId == productId);
+      if (found.isNotEmpty) return found.first.productName;
+    } catch (_) {}
+    return '#$productId';
+  }
 }
 
 class _MovementCard extends StatelessWidget {
-  const _MovementCard({required this.movement});
+  const _MovementCard({required this.movement, required this.productName});
   final StockMovement movement;
+  final String productName;
 
   @override
   Widget build(BuildContext context) {
     final cfg = _movementConfig(movement.type);
-    final name = _ProductNameCache.get(movement.productId);
     final qtyStr = movement.quantity > 0
         ? '+${movement.quantity}'
         : '${movement.quantity}';
@@ -1006,7 +1212,6 @@ class _MovementCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            // Type icon
             Container(
               width: 42,
               height: 42,
@@ -1017,8 +1222,6 @@ class _MovementCard extends StatelessWidget {
               child: Icon(cfg.icon, color: cfg.color, size: 20),
             ),
             const SizedBox(width: 12),
-
-            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1040,14 +1243,13 @@ class _MovementCard extends StatelessWidget {
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                             color: cfg.color,
-                            letterSpacing: 0.3,
                           ),
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          name,
+                          productName,
                           style: GoogleFonts.dmSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1080,8 +1282,6 @@ class _MovementCard extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Quantity
             Text(
               qtyStr,
               style: GoogleFonts.dmSans(
@@ -1100,7 +1300,7 @@ class _MovementCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FAB — Nhập kho / Điều chỉnh
+// FAB
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StockFab extends StatefulWidget {
@@ -1116,13 +1316,10 @@ class _StockFabState extends State<_StockFab> {
 
   @override
   Widget build(BuildContext context) {
-    // Only show on inventory tab
     return AnimatedBuilder(
       animation: widget.tabController,
       builder: (_, _) {
-        if (widget.tabController.index != 0) {
-          return const SizedBox.shrink();
-        }
+        if (widget.tabController.index != 0) return const SizedBox.shrink();
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1151,7 +1348,7 @@ class _StockFabState extends State<_StockFab> {
             ],
             FloatingActionButton(
               onPressed: () => setState(() => _expanded = !_expanded),
-              backgroundColor: AppColors.primary,
+              backgroundColor: const Color(0xFF8B5CF6),
               elevation: 3,
               child: AnimatedRotation(
                 turns: _expanded ? 0.125 : 0,
@@ -1234,24 +1431,23 @@ class _MiniAction extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STOCK ACTION POPUP (tap vào card tồn kho)
+// STOCK ACTION POPUP
 // ─────────────────────────────────────────────────────────────────────────────
 
-void _showStockActions(BuildContext context, StockItem item, String name) {
+void _showStockActions(BuildContext context, StockItem item) {
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (ctx) => BlocProvider.value(
       value: context.read<StockBloc>(),
-      child: _StockActionSheet(item: item, name: name),
+      child: _StockActionSheet(item: item),
     ),
   );
 }
 
 class _StockActionSheet extends StatelessWidget {
-  const _StockActionSheet({required this.item, required this.name});
+  const _StockActionSheet({required this.item});
   final StockItem item;
-  final String name;
 
   @override
   Widget build(BuildContext context) {
@@ -1264,7 +1460,6 @@ class _StockActionSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
           Center(
             child: Container(
               width: 36,
@@ -1276,7 +1471,6 @@ class _StockActionSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // Header
           Row(
             children: [
               Container(
@@ -1298,7 +1492,7 @@ class _StockActionSheet extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name,
+                      item.productName,
                       style: GoogleFonts.dmSans(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -1320,7 +1514,6 @@ class _StockActionSheet extends StatelessWidget {
           const SizedBox(height: 20),
           const Divider(color: AppColors.border),
           const SizedBox(height: 12),
-          // Actions
           _ActionRow(
             icon: Icons.add_box_rounded,
             color: AppColors.success,
@@ -1412,7 +1605,7 @@ class _ActionRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.chevron_right_rounded,
               size: 20,
               color: AppColors.textHint,
@@ -1471,7 +1664,6 @@ class _ImportSheetState extends State<_ImportSheet> {
     if (item == null) return;
     final qty = int.tryParse(_qtyCtrl.text) ?? 0;
     if (qty <= 0) return;
-
     ctx.read<StockBloc>().add(
       StockImportRequested(
         productId: item.productId,
@@ -1497,7 +1689,6 @@ class _ImportSheetState extends State<_ImportSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle + title
           Center(
             child: Container(
               width: 36,
@@ -1536,8 +1727,6 @@ class _ImportSheetState extends State<_ImportSheet> {
             ],
           ),
           const SizedBox(height: 20),
-
-          // Product selector
           _SheetLabel('Sản phẩm'),
           const SizedBox(height: 6),
           Container(
@@ -1567,7 +1756,7 @@ class _ImportSheetState extends State<_ImportSheet> {
                       (s) => DropdownMenuItem(
                         value: s,
                         child: Text(
-                          _ProductNameCache.get(s.productId),
+                          '${s.productName} (tồn: ${s.quantity})',
                           style: GoogleFonts.dmSans(
                             fontSize: 14,
                             color: AppColors.textPrimary,
@@ -1580,10 +1769,7 @@ class _ImportSheetState extends State<_ImportSheet> {
               ),
             ),
           ),
-
           const SizedBox(height: 14),
-
-          // Quantity
           _SheetLabel('Số lượng nhập'),
           const SizedBox(height: 6),
           Row(
@@ -1629,10 +1815,7 @@ class _ImportSheetState extends State<_ImportSheet> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
-          // Note
           _SheetLabel('Ghi chú (tùy chọn)'),
           const SizedBox(height: 6),
           TextField(
@@ -1653,10 +1836,7 @@ class _ImportSheetState extends State<_ImportSheet> {
             ),
             style: GoogleFonts.dmSans(fontSize: 14),
           ),
-
           const SizedBox(height: 20),
-
-          // Submit
           BlocBuilder<StockBloc, StockState>(
             buildWhen: (p, c) => p.actionStatus != c.actionStatus,
             builder: (ctx, state) => SizedBox(
@@ -1745,9 +1925,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
   void initState() {
     super.initState();
     _selectedItem = widget.preselected;
-    if (widget.currentQty != null) {
-      _qtyCtrl.text = '${widget.currentQty}';
-    }
+    if (widget.currentQty != null) _qtyCtrl.text = '${widget.currentQty}';
   }
 
   @override
@@ -1761,7 +1939,6 @@ class _AdjustSheetState extends State<_AdjustSheet> {
     if (item == null) return;
     final qty = int.tryParse(_qtyCtrl.text);
     if (qty == null || qty < 0) return;
-
     ctx.read<StockBloc>().add(
       StockAdjustRequested(productId: item.productId, newQuantity: qty),
     );
@@ -1834,8 +2011,6 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               ),
             ],
           ),
-
-          // Warning note
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(10),
@@ -1866,10 +2041,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
-
-          // Product selector
           _SheetLabel('Sản phẩm'),
           const SizedBox(height: 6),
           Container(
@@ -1899,7 +2071,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                       (s) => DropdownMenuItem(
                         value: s,
                         child: Text(
-                          '${_ProductNameCache.get(s.productId)} (hiện: ${s.quantity})',
+                          '${s.productName} (hiện: ${s.quantity})',
                           style: GoogleFonts.dmSans(
                             fontSize: 13,
                             color: AppColors.textPrimary,
@@ -1917,9 +2089,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               ),
             ),
           ),
-
           const SizedBox(height: 14),
-
           _SheetLabel('Số lượng thực tế (sau kiểm kho)'),
           const SizedBox(height: 6),
           Row(
@@ -1965,9 +2135,7 @@ class _AdjustSheetState extends State<_AdjustSheet> {
               ),
             ],
           ),
-
           const SizedBox(height: 20),
-
           BlocBuilder<StockBloc, StockState>(
             buildWhen: (p, c) => p.actionStatus != c.actionStatus,
             builder: (ctx, state) => SizedBox(
@@ -2074,7 +2242,7 @@ class _LoadingBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Center(
       child: CircularProgressIndicator(
-        color: AppColors.primary,
+        color: Color(0xFF8B5CF6),
         strokeWidth: 2.5,
       ),
     );
@@ -2114,7 +2282,7 @@ class _ErrorBody extends StatelessWidget {
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Thử lại'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: const Color(0xFF8B5CF6),
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(

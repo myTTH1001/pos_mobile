@@ -517,7 +517,7 @@ class _OrdersListState extends State<_OrdersList> {
             controller: _scrollCtrl,
             padding: const EdgeInsets.all(16),
             itemCount: state.orders.length + (state.hasMore ? 1 : 0),
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (ctx, i) {
               if (i == state.orders.length) {
                 return const Padding(
@@ -1437,7 +1437,7 @@ String _formatPrice(double v) {
     if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
     buf.write(s[i]);
   }
-  return '${buf}đ';
+  return '$bufđ';
 }
 
 String _formatTime(DateTime dt) {
