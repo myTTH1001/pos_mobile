@@ -469,6 +469,11 @@ const dashboardDestinations = [
     route: AppRoutes.stock,
   ),
   DashboardDestination(
+    label: 'Hóa đơn',
+    icon: Iconsax.receipt,
+    route: AppRoutes.invoices,
+  ),
+  DashboardDestination(
     label: 'Báo cáo',
     icon: Iconsax.chart_2,
     route: AppRoutes.reports,

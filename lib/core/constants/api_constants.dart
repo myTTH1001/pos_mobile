@@ -5,7 +5,7 @@ class ApiConstants {
 
   // 🔧 Đổi thành IP/domain thực của server khi deploy
   // Emulator Android: 10.0.2.2  |  iOS Simulator: localhost  |  Real device: IP LAN
-  static const String baseUrl = 'http://192.168.100.101:8000/api';
+  static const String baseUrl = 'http://192.168.100.104:8000/api';
 
   // ── Auth ──────────────────────────────────────────────
   static const String login = '/auth/login';
