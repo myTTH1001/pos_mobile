@@ -5,18 +5,8 @@
 // pubspec.yaml — thêm:
 //   print_bluetooth_thermal: ^2.1.2
 //   esc_pos_utils_plus: ^2.0.4
-//
-// Android: android/app/src/main/AndroidManifest.xml
-//   <uses-permission android:name="android.permission.BLUETOOTH" />
-//   <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-//   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-//   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-//
-// iOS: ios/Runner/Info.plist
-//   <key>NSBluetoothAlwaysUsageDescription</key>
-//   <string>Kết nối máy in nhiệt Bluetooth</string>
-//   <key>NSBluetoothPeripheralUsageDescription</key>
-//   <string>Kết nối máy in nhiệt Bluetooth</string>
+
+import 'dart:developer' as dev;
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +18,24 @@ import '../../features/invoices/presentation/bloc/invoices_bloc.dart'
 import '../theme/app_colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DATA CLASS — chi tiết 1 dòng sản phẩm trên hóa đơn
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PrintReceiptItem {
+  const PrintReceiptItem({
+    required this.name,
+    required this.quantity,
+    required this.unitPrice,
+  });
+
+  final String name;
+  final int quantity;
+  final double unitPrice;
+
+  double get subtotal => unitPrice * quantity;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SERVICE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,17 +43,37 @@ class ThermalPrinterService {
   ThermalPrinterService._();
   static final ThermalPrinterService instance = ThermalPrinterService._();
 
-  // Địa chỉ máy in đã kết nối (lưu tạm trong session)
   String? _connectedAddress;
   String? get connectedAddress => _connectedAddress;
   bool get isConnected => _connectedAddress != null;
+
+  // ── Cache CapabilityProfile — load 1 lần duy nhất ────────────────────────
+  // Gọi CapabilityProfile.load() nhiều lần gây log "already loaded"
+  CapabilityProfile? _profile;
+
+  Future<CapabilityProfile> _getProfile() async {
+    _profile ??= await CapabilityProfile.load();
+    return _profile!;
+  }
+
+  // ── Warmup: pre-load profile lúc app khởi động ───────────────────────────
+  // Gọi hàm này trong main() hoặc sau khi login để tránh delay khi in
+  Future<void> warmup() async {
+    try {
+      await _getProfile();
+      dev.log('[Printer] CapabilityProfile loaded', name: 'ThermalPrinter');
+    } catch (e) {
+      dev.log('[Printer] warmup failed: $e', name: 'ThermalPrinter');
+    }
+  }
 
   // ── Lấy danh sách máy in đã pair ────────────────────────────────────────
 
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     try {
       return await PrintBluetoothThermal.pairedBluetooths;
-    } catch (_) {
+    } catch (e) {
+      dev.log('[Printer] getPairedPrinters error: $e', name: 'ThermalPrinter');
       return [];
     }
   }
@@ -59,9 +87,11 @@ class ThermalPrinterService {
       );
       if (result) {
         _connectedAddress = macAddress;
+        dev.log('[Printer] connected: $macAddress', name: 'ThermalPrinter');
       }
       return result;
-    } catch (_) {
+    } catch (e) {
+      dev.log('[Printer] connect error: $e', name: 'ThermalPrinter');
       return false;
     }
   }
@@ -87,33 +117,96 @@ class ThermalPrinterService {
     }
   }
 
-  // ── In hóa đơn ───────────────────────────────────────────────────────────
+  // ── In hóa đơn từ InvoiceModel (trang Hóa đơn) ──────────────────────────
 
-  Future<bool> printInvoice(InvoiceModel invoice) async {
+  Future<bool> printInvoice(
+    InvoiceModel invoice, {
+    List<PrintReceiptItem>? items,
+  }) async {
     final connected = await checkConnection();
     if (!connected) return false;
-
     try {
-      final bytes = await _buildInvoiceTicket(invoice);
-      return await PrintBluetoothThermal.writeBytes(bytes);
-    } catch (_) {
+      final bytes = await _buildTicket(
+        invoiceId: invoice.id,
+        orderId: invoice.orderId,
+        paymentMethod: invoice.paymentMethod,
+        cashierName: invoice.cashierName,
+        paidAt: invoice.paidAt,
+        total: invoice.total,
+        items: items,
+      );
+      final ok = await PrintBluetoothThermal.writeBytes(bytes);
+      dev.log(
+        '[Printer] printInvoice #${invoice.id} → $ok',
+        name: 'ThermalPrinter',
+      );
+      return ok;
+    } catch (e) {
+      dev.log('[Printer] printInvoice error: $e', name: 'ThermalPrinter');
       return false;
     }
   }
 
-  // ── Build ESC/POS ticket cho hóa đơn ────────────────────────────────────
+  // ── In ngay sau khi thanh toán POS (có đầy đủ items) ────────────────────
 
-  Future<List<int>> _buildInvoiceTicket(InvoiceModel invoice) async {
-    final profile = await CapabilityProfile.load();
-    // PT-210 dùng giấy 58mm → PaperSize.mm58
+  Future<bool> printPosReceipt({
+    required int invoiceId,
+    required int orderId,
+    required String paymentMethod,
+    required double total,
+    required List<PrintReceiptItem> items,
+    String? cashierName,
+    DateTime? paidAt,
+  }) async {
+    final connected = await checkConnection();
+    if (!connected) {
+      dev.log(
+        '[Printer] printPosReceipt: not connected',
+        name: 'ThermalPrinter',
+      );
+      return false;
+    }
+    try {
+      final bytes = await _buildTicket(
+        invoiceId: invoiceId,
+        orderId: orderId,
+        paymentMethod: paymentMethod,
+        cashierName: cashierName,
+        paidAt: paidAt ?? DateTime.now(),
+        total: total,
+        items: items,
+      );
+      final ok = await PrintBluetoothThermal.writeBytes(bytes);
+      dev.log(
+        '[Printer] printPosReceipt order#$orderId → $ok',
+        name: 'ThermalPrinter',
+      );
+      return ok;
+    } catch (e) {
+      dev.log('[Printer] printPosReceipt error: $e', name: 'ThermalPrinter');
+      return false;
+    }
+  }
+
+  // ── Build ESC/POS ticket ─────────────────────────────────────────────────
+
+  Future<List<int>> _buildTicket({
+    required int invoiceId,
+    required int orderId,
+    required String paymentMethod,
+    required double total,
+    List<PrintReceiptItem>? items,
+    String? cashierName,
+    DateTime? paidAt,
+  }) async {
+    // Dùng cached profile — không gọi load() lại
+    final profile = await _getProfile();
     final gen = Generator(PaperSize.mm58, profile);
-
     List<int> bytes = [];
 
-    // Reset
     bytes += gen.reset();
 
-    // ── Store header ──────────────────────────────────────────────────────
+    // ── Header store ──────────────────────────────────────────────────────
     bytes += gen.text(
       'DAC SAN QUE HUONG',
       styles: const PosStyles(
@@ -123,20 +216,17 @@ class ThermalPrinterService {
         width: PosTextSize.size2,
       ),
     );
-
     bytes += gen.text(
       'HOA DON BAN HANG',
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
-
     bytes += gen.text(
-      'So: #${invoice.id}',
+      'So: #$invoiceId',
       styles: const PosStyles(align: PosAlign.center),
     );
-
     bytes += gen.hr();
 
-    // ── Invoice info ──────────────────────────────────────────────────────
+    // ── Thông tin đơn hàng ────────────────────────────────────────────────
     bytes += gen.row([
       PosColumn(
         text: 'Don hang:',
@@ -144,7 +234,7 @@ class ThermalPrinterService {
         styles: const PosStyles(align: PosAlign.left),
       ),
       PosColumn(
-        text: '#${invoice.orderId}',
+        text: '#$orderId',
         width: 6,
         styles: const PosStyles(align: PosAlign.right, bold: true),
       ),
@@ -152,18 +242,18 @@ class ThermalPrinterService {
 
     bytes += gen.row([
       PosColumn(
-        text: 'Phuong thuc:',
+        text: 'Thanh toan:',
         width: 6,
         styles: const PosStyles(align: PosAlign.left),
       ),
       PosColumn(
-        text: _methodLabel(invoice.paymentMethod),
+        text: _methodLabel(paymentMethod),
         width: 6,
         styles: const PosStyles(align: PosAlign.right, bold: true),
       ),
     ]);
 
-    if (invoice.cashierName != null) {
+    if (cashierName != null && cashierName.isNotEmpty) {
       bytes += gen.row([
         PosColumn(
           text: 'Thu ngan:',
@@ -171,14 +261,14 @@ class ThermalPrinterService {
           styles: const PosStyles(align: PosAlign.left),
         ),
         PosColumn(
-          text: invoice.cashierName!,
+          text: _stripDiacritics(cashierName),
           width: 6,
           styles: const PosStyles(align: PosAlign.right, bold: true),
         ),
       ]);
     }
 
-    if (invoice.paidAt != null) {
+    if (paidAt != null) {
       bytes += gen.row([
         PosColumn(
           text: 'Thoi gian:',
@@ -186,7 +276,7 @@ class ThermalPrinterService {
           styles: const PosStyles(align: PosAlign.left),
         ),
         PosColumn(
-          text: _formatDateTimeShort(invoice.paidAt!),
+          text: _fmtDateTime(paidAt),
           width: 7,
           styles: const PosStyles(align: PosAlign.right),
         ),
@@ -195,7 +285,57 @@ class ThermalPrinterService {
 
     bytes += gen.hr();
 
-    // ── Total ─────────────────────────────────────────────────────────────
+    // ── Chi tiết sản phẩm ─────────────────────────────────────────────────
+    if (items != null && items.isNotEmpty) {
+      bytes += gen.text(
+        'CHI TIET SAN PHAM',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      );
+      bytes += gen.emptyLines(1);
+
+      for (final item in items) {
+        // ESC/POS 58mm ~ 32 ký tự mỗi dòng ở size thường
+        // Tên sản phẩm: strip dấu tiếng Việt, cắt max 28 ký tự
+        final name = _truncate(_stripDiacritics(item.name), 28);
+
+        bytes += gen.text(name, styles: const PosStyles(bold: true));
+
+        // Dòng 2: SL x đơn giá | thành tiền
+        bytes += gen.row([
+          PosColumn(
+            text: '  ${item.quantity} x ${_fmtPrice(item.unitPrice)}',
+            width: 7,
+            styles: const PosStyles(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: _fmtPrice(item.subtotal),
+            width: 5,
+            styles: const PosStyles(align: PosAlign.right, bold: true),
+          ),
+        ]);
+      }
+
+      bytes += gen.hr();
+
+      // Số lượng mặt hàng
+      final totalQty = items.fold<int>(0, (s, e) => s + e.quantity);
+      bytes += gen.row([
+        PosColumn(
+          text: 'Tong SL:',
+          width: 6,
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+        PosColumn(
+          text: '$totalQty san pham',
+          width: 6,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]);
+
+      bytes += gen.hr();
+    }
+
+    // ── Tổng cộng ─────────────────────────────────────────────────────────
     bytes += gen.row([
       PosColumn(
         text: 'TONG CONG',
@@ -208,7 +348,7 @@ class ThermalPrinterService {
         ),
       ),
       PosColumn(
-        text: _formatPrice(invoice.total),
+        text: _fmtPrice(total),
         width: 6,
         styles: const PosStyles(
           align: PosAlign.right,
@@ -222,17 +362,17 @@ class ThermalPrinterService {
     bytes += gen.hr();
 
     // ── Footer ────────────────────────────────────────────────────────────
+    bytes += gen.emptyLines(1);
     bytes += gen.text(
       'Cam on quy khach!',
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
-
     bytes += gen.text(
       'Hen gap lai!',
       styles: const PosStyles(align: PosAlign.center),
     );
+    bytes += gen.emptyLines(1);
 
-    // Feed & cut
     bytes += gen.feed(3);
     bytes += gen.cut();
 
@@ -241,7 +381,7 @@ class ThermalPrinterService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  String _formatPrice(double v) {
+  String _fmtPrice(double v) {
     final n = v.toInt();
     final s = n.toString();
     final buf = StringBuffer();
@@ -255,28 +395,174 @@ class ThermalPrinterService {
   String _methodLabel(String m) => switch (m) {
     'cash' => 'Tien mat',
     'card' => 'The',
-    'transfer' => 'Chuyen khoan',
+    'transfer' => 'CK',
     _ => m,
   };
 
-  String _formatDateTimeShort(DateTime dt) {
+  String _fmtDateTime(DateTime dt) {
     final h = dt.hour.toString().padLeft(2, '0');
     final min = dt.minute.toString().padLeft(2, '0');
     final d = dt.day.toString().padLeft(2, '0');
     final mo = dt.month.toString().padLeft(2, '0');
     return '$h:$min $d/$mo/${dt.year}';
   }
+
+  String _truncate(String s, int max) =>
+      s.length > max ? '${s.substring(0, max - 2)}..' : s;
+
+  /// Xóa dấu tiếng Việt để tránh lỗi encoding ESC/POS
+  String _stripDiacritics(String input) {
+    const map = <String, String>{
+      'à': 'a',
+      'á': 'a',
+      'ả': 'a',
+      'ã': 'a',
+      'ạ': 'a',
+      'ă': 'a',
+      'ằ': 'a',
+      'ắ': 'a',
+      'ẳ': 'a',
+      'ẵ': 'a',
+      'ặ': 'a',
+      'â': 'a',
+      'ầ': 'a',
+      'ấ': 'a',
+      'ẩ': 'a',
+      'ẫ': 'a',
+      'ậ': 'a',
+      'è': 'e',
+      'é': 'e',
+      'ẻ': 'e',
+      'ẽ': 'e',
+      'ẹ': 'e',
+      'ê': 'e',
+      'ề': 'e',
+      'ế': 'e',
+      'ể': 'e',
+      'ễ': 'e',
+      'ệ': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'ỉ': 'i',
+      'ĩ': 'i',
+      'ị': 'i',
+      'ò': 'o',
+      'ó': 'o',
+      'ỏ': 'o',
+      'õ': 'o',
+      'ọ': 'o',
+      'ô': 'o',
+      'ồ': 'o',
+      'ố': 'o',
+      'ổ': 'o',
+      'ỗ': 'o',
+      'ộ': 'o',
+      'ơ': 'o',
+      'ờ': 'o',
+      'ớ': 'o',
+      'ở': 'o',
+      'ỡ': 'o',
+      'ợ': 'o',
+      'ù': 'u',
+      'ú': 'u',
+      'ủ': 'u',
+      'ũ': 'u',
+      'ụ': 'u',
+      'ư': 'u',
+      'ừ': 'u',
+      'ứ': 'u',
+      'ử': 'u',
+      'ữ': 'u',
+      'ự': 'u',
+      'ỳ': 'y',
+      'ý': 'y',
+      'ỷ': 'y',
+      'ỹ': 'y',
+      'ỵ': 'y',
+      'đ': 'd',
+      'À': 'A',
+      'Á': 'A',
+      'Ả': 'A',
+      'Ã': 'A',
+      'Ạ': 'A',
+      'Ă': 'A',
+      'Ằ': 'A',
+      'Ắ': 'A',
+      'Ẳ': 'A',
+      'Ẵ': 'A',
+      'Ặ': 'A',
+      'Â': 'A',
+      'Ầ': 'A',
+      'Ấ': 'A',
+      'Ẩ': 'A',
+      'Ẫ': 'A',
+      'Ậ': 'A',
+      'È': 'E',
+      'É': 'E',
+      'Ẻ': 'E',
+      'Ẽ': 'E',
+      'Ẹ': 'E',
+      'Ê': 'E',
+      'Ề': 'E',
+      'Ế': 'E',
+      'Ể': 'E',
+      'Ễ': 'E',
+      'Ệ': 'E',
+      'Ì': 'I',
+      'Í': 'I',
+      'Ỉ': 'I',
+      'Ĩ': 'I',
+      'Ị': 'I',
+      'Ò': 'O',
+      'Ó': 'O',
+      'Ỏ': 'O',
+      'Õ': 'O',
+      'Ọ': 'O',
+      'Ô': 'O',
+      'Ồ': 'O',
+      'Ố': 'O',
+      'Ổ': 'O',
+      'Ỗ': 'O',
+      'Ộ': 'O',
+      'Ơ': 'O',
+      'Ờ': 'O',
+      'Ớ': 'O',
+      'Ở': 'O',
+      'Ỡ': 'O',
+      'Ợ': 'O',
+      'Ù': 'U',
+      'Ú': 'U',
+      'Ủ': 'U',
+      'Ũ': 'U',
+      'Ụ': 'U',
+      'Ư': 'U',
+      'Ừ': 'U',
+      'Ứ': 'U',
+      'Ử': 'U',
+      'Ữ': 'U',
+      'Ự': 'U',
+      'Ỳ': 'Y',
+      'Ý': 'Y',
+      'Ỷ': 'Y',
+      'Ỹ': 'Y',
+      'Ỵ': 'Y',
+      'Đ': 'D',
+    };
+
+    final buf = StringBuffer();
+    for (final ch in input.characters) {
+      buf.write(map[ch] ?? ch);
+    }
+    return buf.toString();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRINTER PICKER DIALOG
-// Dialog để chọn máy in từ danh sách paired + kết nối
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PrinterPickerDialog extends StatefulWidget {
   const PrinterPickerDialog({super.key, required this.onConnected});
-
-  /// Callback khi đã kết nối thành công — truyền địa chỉ MAC
   final void Function(String macAddress) onConnected;
 
   @override
@@ -301,16 +587,15 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
       _error = null;
     });
     final printers = await ThermalPrinterService.instance.getPairedPrinters();
-    if (mounted) {
-      setState(() {
-        _printers = printers;
-        _loading = false;
-        if (printers.isEmpty) {
-          _error =
-              'Không tìm thấy máy in đã ghép đôi.\nVui lòng pair PT-210 trong cài đặt Bluetooth của điện thoại trước.';
-        }
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _printers = printers;
+      _loading = false;
+      if (printers.isEmpty) {
+        _error =
+            'Khong tim thay may in da ghep doi.\nVui long pair PT-210 trong Bluetooth.';
+      }
+    });
   }
 
   Future<void> _connect(BluetoothInfo printer) async {
@@ -318,12 +603,11 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
     final ok = await ThermalPrinterService.instance.connect(printer.macAdress);
     if (!mounted) return;
     setState(() => _connectingAddress = null);
-
     if (ok) {
       widget.onConnected(printer.macAdress);
-      Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
     } else {
-      setState(() => _error = 'Không thể kết nối ${printer.name}. Thử lại.');
+      setState(() => _error = 'Khong the ket noi ${printer.name}. Thu lai.');
     }
   }
 
@@ -336,7 +620,6 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 16, 12),
               child: Row(
@@ -368,7 +651,7 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                           ),
                         ),
                         Text(
-                          'Máy in đã ghép đôi qua Bluetooth',
+                          'Máy in đã ghép đôi Bluetooth',
                           style: GoogleFonts.dmSans(
                             fontSize: 11,
                             color: AppColors.textSecondary,
@@ -387,10 +670,8 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                 ],
               ),
             ),
-
             const Divider(height: 1, color: AppColors.border),
 
-            // Body
             if (_loading)
               const Padding(
                 padding: EdgeInsets.all(32),
@@ -441,38 +722,36 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _printers.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, color: AppColors.border),
                   itemBuilder: (_, i) {
-                    final printer = _printers[i];
-                    final isConnecting =
-                        _connectingAddress == printer.macAdress;
-                    final isCurrentlyConnected =
+                    final p = _printers[i];
+                    final isConnecting = _connectingAddress == p.macAdress;
+                    final isConnected =
                         ThermalPrinterService.instance.connectedAddress ==
-                        printer.macAdress;
-
+                        p.macAdress;
                     return ListTile(
                       leading: Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: isCurrentlyConnected
+                          color: isConnected
                               ? AppColors.success.withValues(alpha: 0.1)
                               : AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
-                          isCurrentlyConnected
+                          isConnected
                               ? Icons.bluetooth_connected_rounded
                               : Icons.bluetooth_rounded,
-                          color: isCurrentlyConnected
+                          color: isConnected
                               ? AppColors.success
                               : AppColors.primary,
                           size: 20,
                         ),
                       ),
                       title: Text(
-                        printer.name,
+                        p.name,
                         style: GoogleFonts.dmSans(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -480,12 +759,10 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                         ),
                       ),
                       subtitle: Text(
-                        isCurrentlyConnected
-                            ? 'Đang kết nối'
-                            : printer.macAdress,
+                        isConnected ? 'Đang kết nối' : p.macAdress,
                         style: GoogleFonts.dmSans(
                           fontSize: 11,
-                          color: isCurrentlyConnected
+                          color: isConnected
                               ? AppColors.success
                               : AppColors.textSecondary,
                         ),
@@ -499,7 +776,7 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                                 color: AppColors.primary,
                               ),
                             )
-                          : isCurrentlyConnected
+                          : isConnected
                           ? Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
@@ -522,15 +799,14 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
                               Icons.chevron_right_rounded,
                               color: AppColors.textHint,
                             ),
-                      onTap: isConnecting || isCurrentlyConnected
+                      onTap: isConnecting || isConnected
                           ? null
-                          : () => _connect(printer),
+                          : () => _connect(p),
                     );
                   },
                 ),
               ),
 
-            // Error snack (kết nối thất bại)
             if (_error != null && _printers.isNotEmpty)
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -570,20 +846,19 @@ class _PrinterPickerDialogState extends State<PrinterPickerDialog> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRINT BUTTON WIDGET
-// Widget dùng chung — tự xử lý flow: kiểm tra kết nối → pick printer → in
+// PRINT INVOICE BUTTON — dùng ở trang Hóa đơn
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PrintInvoiceButton extends StatefulWidget {
   const PrintInvoiceButton({
     super.key,
     required this.invoice,
+    this.items,
     this.compact = false,
   });
 
   final InvoiceModel invoice;
-
-  /// compact = true → chỉ hiện icon (dùng trong list card)
+  final List<PrintReceiptItem>? items;
   final bool compact;
 
   @override
@@ -594,34 +869,29 @@ class _PrintInvoiceButtonState extends State<PrintInvoiceButton> {
   bool _printing = false;
 
   Future<void> _handlePrint() async {
-    final service = ThermalPrinterService.instance;
-
-    // Kiểm tra xem đã kết nối chưa
-    final connected = await service.checkConnection();
-
+    final connected = await ThermalPrinterService.instance.checkConnection();
     if (!mounted) return;
 
     if (!connected) {
-      // Chưa kết nối → mở dialog chọn máy in
       await showDialog(
         context: context,
         builder: (_) => PrinterPickerDialog(
           onConnected: (_) {
-            // Sau khi kết nối, tự động in luôn
             if (mounted) _doPrint();
           },
         ),
       );
       return;
     }
-
     _doPrint();
   }
 
   Future<void> _doPrint() async {
+    if (!mounted) return;
     setState(() => _printing = true);
     final ok = await ThermalPrinterService.instance.printInvoice(
       widget.invoice,
+      items: widget.items,
     );
     if (!mounted) return;
     setState(() => _printing = false);

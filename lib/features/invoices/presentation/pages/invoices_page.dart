@@ -663,7 +663,7 @@ class _InvoicesListState extends State<_InvoicesList> {
             controller: _scrollCtrl,
             padding: const EdgeInsets.all(16),
             itemCount: state.invoices.length + (state.hasMore ? 1 : 0),
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (_, i) {
               if (i == state.invoices.length) {
                 return const Padding(
@@ -1099,7 +1099,7 @@ void _showDetailSheet(BuildContext context, InvoiceModel invoice) {
         minChildSize: 0.4,
         maxChildSize: 0.95,
         expand: false,
-        builder: (_, __) => Container(
+        builder: (_, _) => Container(
           decoration: const BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1428,7 +1428,7 @@ String _formatPrice(double v) {
     if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
     buf.write(s[i]);
   }
-  return '${buf}đ';
+  return '$bufđ';
 }
 
 String _formatTime(DateTime dt) {
