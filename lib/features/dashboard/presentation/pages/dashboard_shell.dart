@@ -73,6 +73,7 @@ class _MobileLayout extends StatelessWidget {
           );
         },
         destinations: dashboardDestinations
+            .take(5)
             .map(
               (e) => NavigationDestination(icon: Icon(e.icon), label: e.label),
             )

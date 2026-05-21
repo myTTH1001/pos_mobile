@@ -77,10 +77,15 @@ class InvoicesRemote {
       queryParameters: {
         'limit': limit,
         'offset': offset,
+        // ignore: use_null_aware_elements
         if (status != null) 'status': status,
+        // ignore: use_null_aware_elements
         if (paymentMethod != null) 'payment_method': paymentMethod,
+        // ignore: use_null_aware_elements
         if (cashierId != null) 'cashier_id': cashierId,
+        // ignore: use_null_aware_elements
         if (startDate != null) 'start_date': startDate,
+        // ignore: use_null_aware_elements
         if (endDate != null) 'end_date': endDate,
       },
     );

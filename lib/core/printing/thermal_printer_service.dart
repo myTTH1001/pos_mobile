@@ -1,10 +1,6 @@
 // lib/core/printing/thermal_printer_service.dart
 //
 // ESC/POS Bluetooth printer service cho GOOJPRT PT-210 (58mm)
-//
-// pubspec.yaml — thêm:
-//   print_bluetooth_thermal: ^2.1.2
-//   esc_pos_utils_plus: ^2.0.4
 
 import 'dart:developer' as dev;
 

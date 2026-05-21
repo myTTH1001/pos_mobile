@@ -993,8 +993,9 @@ class _CreateUserSheetState extends State<_CreateUserSheet> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
                 ],
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty)
+                  if (v == null || v.trim().isEmpty) {
                     return 'Vui lòng nhập tên đăng nhập';
+                  }
                   if (v.trim().length < 3) return 'Tối thiểu 3 ký tự';
                   return null;
                 },

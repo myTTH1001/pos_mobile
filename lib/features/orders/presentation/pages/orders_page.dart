@@ -1197,7 +1197,7 @@ class _ItemRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  _formatPrice(item.price) + '/SP',
+                  '${_formatPrice(item.price)}/SP',
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     color: AppColors.textSecondary,
