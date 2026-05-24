@@ -209,7 +209,7 @@ class ThermalPrinterService {
         align: PosAlign.center,
         bold: true,
         height: PosTextSize.size2,
-        width: PosTextSize.size2,
+        width: PosTextSize.size1,
       ),
     );
     bytes += gen.text(
@@ -367,9 +367,8 @@ class ThermalPrinterService {
       'Hen gap lai!',
       styles: const PosStyles(align: PosAlign.center),
     );
-    bytes += gen.emptyLines(1);
-
-    bytes += gen.feed(3);
+    // bytes += gen.emptyLines(1);
+    // bytes += gen.feed(1);
     bytes += gen.cut();
 
     return bytes;

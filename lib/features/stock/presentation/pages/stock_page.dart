@@ -167,7 +167,9 @@ class StockRemote {
       queryParameters: {
         'limit': limit,
         'offset': offset,
+        // ignore: use_null_aware_elements
         if (productId != null) 'product_id': productId,
+        // ignore: use_null_aware_elements
         if (movementType != null) 'movement_type': movementType,
       },
     );
