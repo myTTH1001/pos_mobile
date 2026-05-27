@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import '../constants/api_constants.dart';
+import '../events/auth_event_bus.dart';
 import '../storage/secure_storage.dart';
 
 class DioClient {
@@ -45,7 +46,6 @@ class _TokenInterceptor extends Interceptor {
   _TokenInterceptor(this._dio);
   final Dio _dio;
 
-  // Dùng Completer thay vì bool để queue tất cả request đang chờ refresh
   Completer<String>? _refreshCompleter;
 
   static const _skipPaths = [
@@ -74,14 +74,12 @@ class _TokenInterceptor extends Interceptor {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    // Không retry nếu chính request refresh bị lỗi
     final isRetry = err.requestOptions.extra['skipRetry'] == true;
     if (err.response?.statusCode != 401 || isRetry) {
       handler.next(err);
       return;
     }
 
-    // Nếu đang có refresh chạy, đợi kết quả thay vì trigger thêm một cái nữa
     if (_refreshCompleter != null && !_refreshCompleter!.isCompleted) {
       try {
         final newToken = await _refreshCompleter!.future;
@@ -95,11 +93,14 @@ class _TokenInterceptor extends Interceptor {
       return;
     }
 
-    // Bắt đầu refresh
     _refreshCompleter = Completer<String>();
     try {
       final refreshToken = await SecureStorage.instance.getRefreshToken();
-      if (refreshToken == null) throw Exception('No refresh token');
+      if (refreshToken == null) {
+        await _handleSessionExpired();
+        handler.next(err);
+        return;
+      }
 
       final response = await _dio.post(
         ApiConstants.refresh,
@@ -120,17 +121,23 @@ class _TokenInterceptor extends Interceptor {
 
       _refreshCompleter!.complete(newAccess);
 
-      // Retry request gốc với token mới
       final opts = err.requestOptions;
       opts.headers['Authorization'] = 'Bearer $newAccess';
       final retryResponse = await _dio.fetch(opts);
       handler.resolve(retryResponse);
     } catch (_) {
-      await SecureStorage.instance.clearTokens();
+      // [FIX] Refresh thất bại → xóa token + emit logout toàn cục
+      await _handleSessionExpired();
       _refreshCompleter!.completeError('refresh_failed');
       handler.next(err);
     } finally {
       _refreshCompleter = null;
     }
+  }
+
+  Future<void> _handleSessionExpired() async {
+    await SecureStorage.instance.clearTokens();
+    // Thông báo AuthBloc để redirect về /login
+    AuthEventBus.instance.emitLogout();
   }
 }

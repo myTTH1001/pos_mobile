@@ -1,14 +1,12 @@
+// lib/features/auth/presentation/bloc/auth_bloc.dart
+import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
+import '../../../../../core/events/auth_event_bus.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
-/// AuthBloc xử lý toàn bộ vòng đời xác thực.
-///
-/// Navigation KHÔNG nằm ở đây — GoRouter lắng nghe stream và tự redirect
-/// khi state thay đổi. Bloc chỉ cần emit đúng state.
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   AuthBloc({AuthRepository? repository})
     : _repo = repository ?? AuthRepositoryImpl(),
@@ -16,11 +14,27 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthLoginRequested>(_onLoginRequested);
     on<AuthLogoutRequested>(_onLogoutRequested);
+
+    // [FIX] Lắng nghe AuthEventBus từ DioClient
+    // Khi refresh token hết hạn → tự động logout
+    _authBusSubscription = AuthEventBus.instance.stream.listen((event) {
+      if (event == AuthBusEvent.sessionExpired) {
+        if (state is AuthAuthenticated || state is AuthLoading) {
+          add(const AuthLogoutRequested());
+        }
+      }
+    });
   }
 
   final AuthRepository _repo;
+  late final StreamSubscription<AuthBusEvent> _authBusSubscription;
 
-  // ── Check token lúc khởi động app ───────────────────────
+  @override
+  Future<void> close() {
+    _authBusSubscription.cancel();
+    return super.close();
+  }
+
   Future<void> _onCheckRequested(
     AuthCheckRequested event,
     Emitter<AuthState> emit,
@@ -34,7 +48,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  // ── Login ───────────────────────────────────────────────
   Future<void> _onLoginRequested(
     AuthLoginRequested event,
     Emitter<AuthState> emit,
@@ -44,11 +57,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       await _repo.login(username: event.username, password: event.password);
       emit(const AuthAuthenticated());
     } on AuthException catch (e) {
-      // Emit error để listener bắt và hiển thị SnackBar,
-      // sau đó ngay lập tức reset về Unauthenticated để:
-      //   1. State không "kẹt" ở AuthError
-      //   2. Listener không re-trigger ở lần submit tiếp theo
-      //   3. Form vẫn enabled, user có thể thử lại
       emit(AuthError(e.message));
       emit(const AuthUnauthenticated());
     } catch (_) {
@@ -57,7 +65,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  // ── Logout ──────────────────────────────────────────────
   Future<void> _onLogoutRequested(
     AuthLogoutRequested event,
     Emitter<AuthState> emit,
