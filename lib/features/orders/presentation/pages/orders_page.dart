@@ -1021,107 +1021,106 @@ void _showDetailSheet(BuildContext context, Order order) {
 
 void _confirmCancel(BuildContext context, Order order) {
   final reasonCtrl = TextEditingController();
+  final bloc = context.read<OrdersBloc>();
+
   showDialog(
     context: context,
-    builder: (_) => BlocProvider.value(
-      value: context.read<OrdersBloc>(),
-      child: AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.cancel_outlined,
-                size: 20,
-                color: AppColors.error,
-              ),
+    builder: (dialogContext) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 12),
-            Text(
-              'Hủy đơn #${order.id}?',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hành động này không thể hoàn tác.',
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonCtrl,
-              decoration: InputDecoration(
-                hintText: 'Lý do hủy (tùy chọn)',
-                filled: true,
-                fillColor: AppColors.surfaceAlt,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-              ),
-              style: GoogleFonts.dmSans(fontSize: 14),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Thôi',
-              style: GoogleFonts.dmSans(color: AppColors.textSecondary),
+            child: const Icon(
+              Icons.cancel_outlined,
+              size: 20,
+              color: AppColors.error,
             ),
           ),
-          Builder(
-            builder: (ctx) => ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ctx.read<OrdersBloc>().add(
-                  OrderCancelRequested(
-                    orderId: order.id,
-                    reason: reasonCtrl.text.trim().isEmpty
-                        ? null
-                        : reasonCtrl.text.trim(),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Text(
-                'Hủy đơn',
-                style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
-              ),
+          const SizedBox(width: 12),
+          Text(
+            'Hủy đơn #${order.id}?',
+            style: GoogleFonts.dmSans(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
       ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Hành động này không thể hoàn tác.',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: reasonCtrl,
+            decoration: InputDecoration(
+              hintText: 'Lý do hủy (tùy chọn)',
+              filled: true,
+              fillColor: AppColors.surfaceAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+            ),
+            style: GoogleFonts.dmSans(fontSize: 14),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(dialogContext).pop();
+          },
+          child: Text(
+            'Thôi',
+            style: GoogleFonts.dmSans(color: AppColors.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final reason = reasonCtrl.text.trim().isEmpty
+                ? null
+                : reasonCtrl.text.trim();
+
+            Navigator.of(dialogContext).pop();
+
+            bloc.add(OrderCancelRequested(orderId: order.id, reason: reason));
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.error,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: Text(
+            'Hủy đơn',
+            style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     ),
-  );
+  ).then((_) {
+    reasonCtrl.dispose();
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

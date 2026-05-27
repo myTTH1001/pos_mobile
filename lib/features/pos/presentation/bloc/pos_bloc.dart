@@ -62,7 +62,11 @@ class PosBloc extends Bloc<PosEvent, PosState> {
   }
 
   // ── Tạo order (draft) + confirm + tự động tạo invoice ──
-  // Flow: createOrder → confirmOrder → payOrder (1 lần bấm "Thanh toán")
+  // FIX Bug #7: Tách xử lý lỗi payOrder riêng biệt.
+  // Nếu confirmOrder thành công nhưng payOrder lỗi:
+  //   - Clear cart để tránh đặt đơn trùng lần sau
+  //   - Thông báo rõ ràng cho user biết đơn đã confirmed
+  //   - User có thể vào tab Đơn hàng để thanh toán lại
   Future<void> _onOrderSubmitted(
     PosOrderSubmitted event,
     Emitter<PosState> emit,
@@ -89,17 +93,34 @@ class PosBloc extends Bloc<PosEvent, PosState> {
       // 2. Confirm (trừ kho)
       final confirmed = await _repo.confirmOrder(draft.id, event.paymentMethod);
 
-      // 3. Tạo invoice (thanh toán)
-      final paid = await _repo.payOrder(confirmed.id, event.paymentMethod);
+      // Bước 3: Tạo invoice — nếu lỗi ở đây, vẫn clear cart
+      // để tránh tạo đơn trùng, và thông báo cho user
+      try {
+        final paid = await _repo.payOrder(confirmed.id, event.paymentMethod);
 
-      emit(
-        state.copyWith(
-          status: PosStatus.success,
-          completedOrder: paid,
-          cart: {}, // clear cart sau khi thành công
-        ),
-      );
+        emit(
+          state.copyWith(
+            status: PosStatus.success,
+            completedOrder: paid,
+            cart: {}, // clear cart sau khi thành công hoàn toàn
+          ),
+        );
+      } catch (payError) {
+        // Đơn đã confirmed (kho đã trừ), chỉ chưa có invoice.
+        // Clear cart để tránh đặt lại. User vào tab Đơn hàng thanh toán lại.
+        emit(
+          state.copyWith(
+            status: PosStatus.error,
+            errorMessage:
+                'Đơn #${confirmed.id} đã xác nhận nhưng chưa tạo được hóa đơn. '
+                'Vui lòng vào tab Đơn hàng để thanh toán lại.',
+            cart: {}, // FIX: clear cart để tránh đặt trùng
+            clearCompletedOrder: true,
+          ),
+        );
+      }
     } catch (e) {
+      // Lỗi ở createOrder hoặc confirmOrder — giữ cart để user thử lại
       emit(
         state.copyWith(
           status: PosStatus.error,

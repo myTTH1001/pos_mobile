@@ -1141,90 +1141,77 @@ void _showDetailSheet(BuildContext context, InvoiceModel invoice) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CANCEL CONFIRM DIALOG
 // ─────────────────────────────────────────────────────────────────────────────
-
 void _confirmCancel(BuildContext context, InvoiceModel invoice) {
+  final bloc = context.read<InvoicesBloc>();
+
   showDialog(
     context: context,
-    builder: (_) => BlocProvider.value(
-      value: context.read<InvoicesBloc>(),
-      child: AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.cancel_outlined,
-                size: 20,
-                color: AppColors.error,
-              ),
+    builder: (dialogContext) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Hủy hóa đơn #${invoice.id}?',
-                style: GoogleFonts.dmSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hủy hóa đơn sẽ hoàn kho tự động và chuyển đơn hàng về trạng thái "Đã hủy". Hành động này không thể hoàn tác.',
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Thôi',
-              style: GoogleFonts.dmSans(color: AppColors.textSecondary),
+            child: const Icon(
+              Icons.cancel_outlined,
+              size: 20,
+              color: AppColors.error,
             ),
           ),
-          Builder(
-            builder: (ctx) => ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ctx.read<InvoicesBloc>().add(
-                  InvoiceCancelRequested(invoice.id),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Text(
-                'Xác nhận hủy',
-                style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Hủy hóa đơn #${invoice.id}?',
+              style: GoogleFonts.dmSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
         ],
       ),
+      content: Text(
+        'Hủy hóa đơn sẽ hoàn kho tự động và chuyển đơn hàng về trạng thái "Đã hủy". Hành động này không thể hoàn tác.',
+        style: GoogleFonts.dmSans(fontSize: 13, color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(dialogContext).pop();
+          },
+          child: Text(
+            'Thôi',
+            style: GoogleFonts.dmSans(color: AppColors.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(dialogContext).pop();
+
+            bloc.add(InvoiceCancelRequested(invoice.id));
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.error,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: Text(
+            'Xác nhận hủy',
+            style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     ),
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED WIDGETS
 // ─────────────────────────────────────────────────────────────────────────────
