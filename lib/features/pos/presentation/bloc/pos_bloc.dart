@@ -18,6 +18,8 @@ class PosBloc extends Bloc<PosEvent, PosState> {
     on<PosCartCleared>(_onCartCleared);
     on<PosOrderSubmitted>(_onOrderSubmitted);
     on<PosPaymentConfirmed>(_onPaymentConfirmed);
+    on<PosSaveDraftRequested>(_onSaveDraft);
+    on<PosDraftConsumed>(_onDraftConsumed);
     on<PosReset>(_onReset);
   }
 
@@ -61,12 +63,64 @@ class PosBloc extends Bloc<PosEvent, PosState> {
     emit(state.copyWith(cart: {}));
   }
 
-  // ── Tạo order (draft) + confirm + tự động tạo invoice ──
-  // FIX Bug #7: Tách xử lý lỗi payOrder riêng biệt.
-  // Nếu confirmOrder thành công nhưng payOrder lỗi:
-  //   - Clear cart để tránh đặt đơn trùng lần sau
-  //   - Thông báo rõ ràng cho user biết đơn đã confirmed
-  //   - User có thể vào tab Đơn hàng để thanh toán lại
+  // ── Lưu nháp ───────────────────────────────────────────
+  // Chỉ tạo draft order, không confirm, không pay.
+  // Clear cart sau khi lưu xong để bắt đầu đơn mới.
+  Future<void> _onSaveDraft(
+    PosSaveDraftRequested event,
+    Emitter<PosState> emit,
+  ) async {
+    if (state.cart.isEmpty) return;
+
+    emit(state.copyWith(status: PosStatus.savingDraft));
+
+    try {
+      final items = state.cart.values
+          .map(
+            (c) => OrderItem(
+              productId: c.product.id,
+              productName: c.product.name,
+              quantity: c.quantity,
+              price: c.product.price,
+            ),
+          )
+          .toList();
+
+      final draft = await _repo.createOrder(items);
+
+      emit(
+        state.copyWith(
+          status: PosStatus.saveDraftSuccess,
+          savedDraftOrder: draft,
+          cart: {}, // clear cart để bắt đầu đơn mới
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          status: PosStatus.error,
+          errorMessage: e.toString().replaceFirst('Exception: ', ''),
+          clearCompletedOrder: true,
+        ),
+      );
+    }
+  }
+
+  // THÊM MỚI
+  Future<void> _onDraftConsumed(
+    PosDraftConsumed event,
+    Emitter<PosState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        status: PosStatus.idle,
+        clearSavedDraft: true,
+        clearErrorMessage: true,
+      ),
+    );
+  }
+
+  // ── Tạo + confirm + pay ─────────────────────────────────
   Future<void> _onOrderSubmitted(
     PosOrderSubmitted event,
     Emitter<PosState> emit,

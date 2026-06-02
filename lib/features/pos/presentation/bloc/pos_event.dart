@@ -47,6 +47,17 @@ class PosPaymentConfirmed extends PosEvent {
   List<Object?> get props => [paymentMethod];
 }
 
+/// NEW: Lưu giỏ hàng thành draft order, không confirm, không pay.
+/// Sau khi lưu thành công → cart bị clear để bắt đầu đơn mới.
+class PosSaveDraftRequested extends PosEvent {
+  const PosSaveDraftRequested();
+}
+
+/// NEW: Sau khi lưu nháp thành công, user vào tab Đơn hàng, chọn 1 draft order để tiếp tục đặt hàng.
+class PosDraftConsumed extends PosEvent {
+  const PosDraftConsumed();
+}
+
 class PosReset extends PosEvent {
   const PosReset();
 }
