@@ -98,7 +98,8 @@ class StockMovement {
     quantity: j['quantity'] as int,
     type: j['type'] as String,
     createdAt:
-        DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now(),
+        (DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now())
+            .toLocal(),
     note: j['note'] as String?,
     transferRef: j['transfer_ref'] as String?,
   );
@@ -282,7 +283,7 @@ class StockState {
     if (stockFilter == 'in_stock') {
       list = list.where((s) => s.quantity > 5).toList();
     } else if (stockFilter == 'low_stock') {
-      list = list.where((s) => s.quantity >= 1 && s.quantity <= 5).toList();
+      list = list.where((s) => s.quantity >= 1 && s.quantity <= 10).toList();
     } else if (stockFilter == 'out_of_stock') {
       list = list.where((s) => s.quantity == 0).toList();
     }

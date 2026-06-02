@@ -40,11 +40,12 @@ class InvoiceModel {
     status: j['status'] as String? ?? 'paid',
     paymentMethod: j['payment_method'] as String? ?? 'cash',
     createdAt:
-        DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now(),
+        (DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now())
+            .toLocal(),
     cashierId: j['cashier_id'] as int?,
     cashierName: j['cashier_name'] as String?,
     paidAt: j['paid_at'] != null
-        ? DateTime.tryParse(j['paid_at'] as String)
+        ? DateTime.tryParse(j['paid_at'] as String)?.toLocal()
         : null,
   );
 

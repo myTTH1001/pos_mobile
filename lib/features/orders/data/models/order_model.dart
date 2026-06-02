@@ -51,7 +51,7 @@ class OrderInvoiceModel {
         paymentMethod: j['payment_method'] as String,
         total: _toDouble(j['total']),
         paidAt: j['paid_at'] != null
-            ? DateTime.tryParse(j['paid_at'] as String)
+            ? DateTime.tryParse(j['paid_at'] as String)?.toLocal()
             : null,
       );
 
@@ -86,7 +86,8 @@ class OrderModel {
     status: j['status'] as String,
     total: _toDouble(j['total']),
     createdAt:
-        DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now(),
+        (DateTime.tryParse(j['created_at'] as String? ?? '') ?? DateTime.now())
+            .toLocal(),
     items: (j['items'] as List<dynamic>? ?? [])
         .map((e) => OrderItemModel.fromJson(e as Map<String, dynamic>))
         .toList(),

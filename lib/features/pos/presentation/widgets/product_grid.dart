@@ -293,7 +293,7 @@ class _ProductImage extends StatelessWidget {
           ? imageUrl!
           : '/uploads/$imageUrl';
 
-      final fullUrl = fixedPath.startsWith('http')
+      final fullUrl = fixedPath.startsWith('https')
           ? fixedPath
           : '${ApiConstants.baseUrl.replaceAll('/api', '')}$fixedPath';
       return ClipRRect(

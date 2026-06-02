@@ -36,7 +36,8 @@ class RevenueByDay {
   });
 
   factory RevenueByDay.fromJson(Map<String, dynamic> j) => RevenueByDay(
-    date: DateTime.tryParse(j['date'] as String? ?? '') ?? DateTime.now(),
+    date: (DateTime.tryParse(j['date'] as String? ?? '') ?? DateTime.now())
+        .toLocal(),
     revenue: _toDouble(j['revenue']),
     totalOrders: (j['total_orders'] as num?)?.toInt() ?? 0,
   );
