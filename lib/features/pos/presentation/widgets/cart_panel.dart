@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../bloc/pos_bloc.dart';
+import 'discount_sheet.dart';
 
 class CartPanel extends StatelessWidget {
   const CartPanel({super.key, required this.onCheckout});
@@ -124,11 +125,13 @@ class _CartItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasDiscount = item.discount != null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // Name + price
+          // Name + price + discount chip
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,6 +154,75 @@ class _CartItemTile extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
+                const SizedBox(height: 4),
+                // Nút giảm giá item
+                GestureDetector(
+                  onTap: () async {
+                    final result = await showDiscountSheet(
+                      context,
+                      title: item.product.name,
+                      baseAmount: item.baseSubtotal,
+                      current: item.discount,
+                    );
+                    if (!context.mounted) return;
+                    context.read<PosBloc>().add(
+                      PosItemDiscountChanged(
+                        productId: item.product.id,
+                        discount: result,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: hasDiscount
+                          ? AppColors.primary.withValues(alpha: 0.1)
+                          : AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: hasDiscount
+                            ? AppColors.primary.withValues(alpha: 0.35)
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.local_offer_rounded,
+                          size: 11,
+                          color: hasDiscount
+                              ? AppColors.primary
+                              : AppColors.textHint,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          hasDiscount
+                              ? switch (item.discount!.type) {
+                                  DiscountType.fixedPrice => _formatPrice(
+                                    item.discount!.value,
+                                  ),
+                                  DiscountType.percent =>
+                                    '-${item.discount!.value.toInt()}%',
+                                  DiscountType.amount =>
+                                    '-${_formatPrice(item.discount!.value)}',
+                                }
+                              : 'Giảm giá',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: hasDiscount
+                                ? AppColors.primary
+                                : AppColors.textHint,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -158,17 +230,32 @@ class _CartItemTile extends StatelessWidget {
           // Quantity controls
           _QtyControl(item: item),
 
-          // Subtotal
+          // Subtotal (gạch ngang nếu có discount)
           SizedBox(
             width: 70,
-            child: Text(
-              _formatPrice(item.subtotal),
-              textAlign: TextAlign.right,
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primary,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (hasDiscount)
+                  Text(
+                    _formatPrice(item.baseSubtotal),
+                    textAlign: TextAlign.right,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.textHint,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                Text(
+                  _formatPrice(item.subtotal),
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: hasDiscount ? AppColors.success : AppColors.primary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -245,7 +332,6 @@ class _QtyBtn extends StatelessWidget {
   }
 }
 
-// ── Cart footer ────────────────────────────────────────────────────────────────
 class _CartFooter extends StatelessWidget {
   const _CartFooter({required this.state, required this.onCheckout});
   final PosState state;
@@ -253,43 +339,175 @@ class _CartFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasOrderDiscount = state.orderDiscount != null;
+    final hasAnyItemDiscount = state.cartItems.any((e) => e.discount != null);
+    final showBreakdown = hasAnyItemDiscount || hasOrderDiscount;
+    final itemDiscountTotal = state.cartItems.fold(
+      0.0,
+      (s, e) => s + e.discountAmount,
+    );
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         children: [
-          // Summary row
+          // ── Breakdown giảm giá (chỉ hiện khi có discount) ───
+          if (showBreakdown) ...[
+            if (hasAnyItemDiscount)
+              _SummaryRow(
+                label: 'Giảm giá món',
+                value: '-${_formatPrice(itemDiscountTotal)}',
+                valueColor: AppColors.success,
+              ),
+            if (hasOrderDiscount)
+              _SummaryRow(
+                label: 'Giảm giá đơn',
+                value: '-${_formatPrice(state.orderDiscountAmount)}',
+                valueColor: AppColors.success,
+              ),
+            const Divider(height: 12, color: AppColors.border),
+          ],
+
+          // ── Summary row ──────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${state.itemCount} sản phẩm',
-                style: GoogleFonts.dmSans(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
+              // Nút giảm giá toàn đơn
+              GestureDetector(
+                onTap: () async {
+                  final result = await showDiscountSheet(
+                    context,
+                    title: 'Giảm giá đơn hàng',
+                    baseAmount: state.subtotalAfterItemDiscounts,
+                    current: state.orderDiscount,
+                  );
+                  if (!context.mounted) return;
+                  context.read<PosBloc>().add(
+                    PosOrderDiscountChanged(discount: result),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: hasOrderDiscount
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: hasOrderDiscount
+                          ? AppColors.primary.withValues(alpha: 0.35)
+                          : AppColors.border,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.discount_rounded,
+                        size: 13,
+                        color: hasOrderDiscount
+                            ? AppColors.primary
+                            : AppColors.textHint,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        hasOrderDiscount
+                            ? switch (state.orderDiscount!.type) {
+                                DiscountType.fixedPrice =>
+                                  'Tổng ${_formatPrice(state.orderDiscount!.value)}',
+                                DiscountType.percent =>
+                                  '-${state.orderDiscount!.value.toInt()}% đơn',
+                                DiscountType.amount =>
+                                  '-${_formatPrice(state.orderDiscount!.value)}',
+                              }
+                            : 'Giảm đơn',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: hasOrderDiscount
+                              ? AppColors.primary
+                              : AppColors.textHint,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Text(
-                _formatPrice(state.grandTotal),
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
+
+              // Tổng + số sản phẩm
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${state.itemCount} sản phẩm',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    _formatPrice(state.grandTotal),
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // ── Action buttons row ───────────────────────────
+          // ── Action buttons row ───────────────────────────────
           Row(
             children: [
-              // Nút Lưu nháp
               Expanded(flex: 4, child: _SaveDraftButton()),
               const SizedBox(width: 10),
-              // Nút Thanh toán
               Expanded(flex: 6, child: _CheckoutButton(onCheckout: onCheckout)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: valueColor ?? AppColors.textPrimary,
+            ),
           ),
         ],
       ),

@@ -21,6 +21,8 @@ class PosBloc extends Bloc<PosEvent, PosState> {
     on<PosSaveDraftRequested>(_onSaveDraft);
     on<PosDraftConsumed>(_onDraftConsumed);
     on<PosReset>(_onReset);
+    on<PosItemDiscountChanged>(_onItemDiscountChanged);
+    on<PosOrderDiscountChanged>(_onOrderDiscountChanged);
   }
 
   final OrderRepository _repo;
@@ -75,16 +77,17 @@ class PosBloc extends Bloc<PosEvent, PosState> {
     emit(state.copyWith(status: PosStatus.savingDraft));
 
     try {
-      final items = state.cart.values
-          .map(
-            (c) => OrderItem(
-              productId: c.product.id,
-              productName: c.product.name,
-              quantity: c.quantity,
-              price: c.product.price,
-            ),
-          )
-          .toList();
+      final items = state.cart.values.map((c) {
+        final effectiveUnitPrice = c.quantity > 0
+            ? c.subtotal / c.quantity
+            : c.unitPrice;
+        return OrderItem(
+          productId: c.product.id,
+          productName: c.product.name,
+          quantity: c.quantity,
+          price: effectiveUnitPrice,
+        );
+      }).toList();
 
       final draft = await _repo.createOrder(items);
 
@@ -92,7 +95,8 @@ class PosBloc extends Bloc<PosEvent, PosState> {
         state.copyWith(
           status: PosStatus.saveDraftSuccess,
           savedDraftOrder: draft,
-          cart: {}, // clear cart để bắt đầu đơn mới
+          cart: {},
+          clearOrderDiscount: true,
         ),
       );
     } catch (e) {
@@ -130,18 +134,23 @@ class PosBloc extends Bloc<PosEvent, PosState> {
     emit(state.copyWith(status: PosStatus.loading));
 
     try {
-      // 1. Tạo draft
-      final items = state.cart.values
-          .map(
-            (c) => OrderItem(
-              productId: c.product.id,
-              productName: c.product.name,
-              quantity: c.quantity,
-              price: c.product.price,
-            ),
-          )
-          .toList();
+      // Dùng giá đã giảm (subtotal / quantity) để ghi vào OrderItem
+      final items = state.cart.values.map((c) {
+        // Giá thực tế mỗi đơn vị sau giảm giá item
+        final effectiveUnitPrice = c.quantity > 0
+            ? c.subtotal / c.quantity
+            : c.unitPrice;
+        return OrderItem(
+          productId: c.product.id,
+          productName: c.product.name,
+          quantity: c.quantity,
+          price: effectiveUnitPrice,
+        );
+      }).toList();
 
+      // Tổng cuối (đã trừ giảm giá toàn đơn)
+      // Ghi chú: API createOrder nhận items; grandTotal tính lại từ items.
+      // Nếu backend cần biết order-level discount, truyền thêm param ở đây.
       final draft = await _repo.createOrder(items);
 
       // 2. Confirm (trừ kho)
@@ -157,6 +166,7 @@ class PosBloc extends Bloc<PosEvent, PosState> {
             status: PosStatus.success,
             completedOrder: paid,
             cart: {}, // clear cart sau khi thành công hoàn toàn
+            clearOrderDiscount: true,
           ),
         );
       } catch (payError) {
@@ -169,6 +179,7 @@ class PosBloc extends Bloc<PosEvent, PosState> {
                 'Đơn #${confirmed.id} đã xác nhận nhưng chưa tạo được hóa đơn. '
                 'Vui lòng vào tab Đơn hàng để thanh toán lại.',
             cart: {}, // FIX: clear cart để tránh đặt trùng
+            clearOrderDiscount: true,
             clearCompletedOrder: true,
           ),
         );
@@ -196,5 +207,31 @@ class PosBloc extends Bloc<PosEvent, PosState> {
   // ── Reset về trạng thái ban đầu ────────────────────────
   void _onReset(PosReset event, Emitter<PosState> emit) {
     emit(const PosState());
+  }
+
+  // ── Sửa giảm giá từng item ──────────────────────────────
+  void _onItemDiscountChanged(
+    PosItemDiscountChanged event,
+    Emitter<PosState> emit,
+  ) {
+    final cart = Map<int, CartItem>.from(state.cart);
+    final item = cart[event.productId];
+    if (item == null) return;
+    cart[event.productId] = event.discount == null
+        ? item.copyWith(clearDiscount: true)
+        : item.copyWith(discount: event.discount);
+    emit(state.copyWith(cart: cart));
+  }
+
+  // ── Sửa giảm giá toàn đơn ──────────────────────────────
+  void _onOrderDiscountChanged(
+    PosOrderDiscountChanged event,
+    Emitter<PosState> emit,
+  ) {
+    emit(
+      event.discount == null
+          ? state.copyWith(clearOrderDiscount: true)
+          : state.copyWith(orderDiscount: event.discount),
+    );
   }
 }

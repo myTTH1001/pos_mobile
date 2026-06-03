@@ -61,3 +61,23 @@ class PosDraftConsumed extends PosEvent {
 class PosReset extends PosEvent {
   const PosReset();
 }
+
+/// Sửa / xoá giảm giá trên 1 item cụ thể
+class PosItemDiscountChanged extends PosEvent {
+  const PosItemDiscountChanged({
+    required this.productId,
+    this.discount, // null = xoá giảm giá
+  });
+  final int productId;
+  final Discount? discount;
+  @override
+  List<Object?> get props => [productId, discount];
+}
+
+/// Sửa / xoá giảm giá toàn đơn
+class PosOrderDiscountChanged extends PosEvent {
+  const PosOrderDiscountChanged({this.discount}); // null = xoá
+  final Discount? discount;
+  @override
+  List<Object?> get props => [discount];
+}
