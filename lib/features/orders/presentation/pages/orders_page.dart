@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/printing/thermal_printer_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/order_entity.dart';
 import '../bloc/orders_bloc.dart';
@@ -707,6 +708,7 @@ class _OrderDetailContent extends StatelessWidget {
     final cfg = _statusConfig(order.status);
     final canCancel = order.status == 'draft' || order.status == 'confirmed';
     final canReorder = order.items.isNotEmpty;
+    final canPrint = order.status == 'paid' || order.invoice != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -745,6 +747,11 @@ class _OrderDetailContent extends StatelessWidget {
                   ],
                 ),
               ),
+              // Print button (compact) — chỉ hiện khi đơn đã thanh toán
+              if (order.status == 'paid' ||
+                  order.invoice != null ||
+                  order.status == 'draft')
+                PrintOrderButton(order: order, compact: true),
               if (onClose != null)
                 IconButton(
                   onPressed: onClose,
@@ -851,6 +858,10 @@ class _OrderDetailContent extends StatelessWidget {
 
                     return Column(
                       children: [
+                        // Print
+                        if (canPrint) PrintOrderButton(order: order),
+                        if (canPrint && canReorder) const SizedBox(height: 10),
+
                         // Reorder
                         if (canReorder)
                           SizedBox(

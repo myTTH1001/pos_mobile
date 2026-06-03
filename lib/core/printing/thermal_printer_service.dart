@@ -11,6 +11,7 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../../features/invoices/presentation/bloc/invoices_bloc.dart'
     show InvoiceModel;
+import '../../features/orders/domain/entities/order_entity.dart';
 import '../theme/app_colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +140,46 @@ class ThermalPrinterService {
       return ok;
     } catch (e) {
       dev.log('[Printer] printInvoice error: $e', name: 'ThermalPrinter');
+      return false;
+    }
+  }
+
+  // ── In lại đơn hàng từ Order (trang Đơn hàng) ────────────────────────────
+  //
+  // Convert OrderItem → PrintReceiptItem rồi gọi _buildTicket.
+  // Dùng invoice đính kèm (nếu có) để lấy paymentMethod / paidAt.
+
+  Future<bool> printOrder(Order order) async {
+    final connected = await checkConnection();
+    if (!connected) return false;
+    try {
+      final items = order.items
+          .map(
+            (e) => PrintReceiptItem(
+              name: e.productName,
+              quantity: e.quantity,
+              unitPrice: e.price,
+            ),
+          )
+          .toList();
+
+      final bytes = await _buildTicket(
+        invoiceId: order.invoice?.id ?? order.id,
+        orderId: order.id,
+        paymentMethod: order.invoice?.paymentMethod ?? 'cash',
+        cashierName: null,
+        paidAt: order.invoice?.paidAt,
+        total: order.total,
+        items: items,
+      );
+      final ok = await PrintBluetoothThermal.writeBytes(bytes);
+      dev.log(
+        '[Printer] printOrder #${order.id} → $ok',
+        name: 'ThermalPrinter',
+      );
+      return ok;
+    } catch (e) {
+      dev.log('[Printer] printOrder error: $e', name: 'ThermalPrinter');
       return false;
     }
   }
@@ -367,8 +408,6 @@ class ThermalPrinterService {
       'Hen gap lai!',
       styles: const PosStyles(align: PosAlign.center),
     );
-    // bytes += gen.emptyLines(1);
-    // bytes += gen.feed(1);
     bytes += gen.cut();
 
     return bytes;
@@ -953,6 +992,127 @@ class _PrintInvoiceButtonState extends State<PrintInvoiceButton> {
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRINT ORDER BUTTON — dùng ở trang Đơn hàng
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// [compact] = true → icon button nhỏ trong header detail.
+/// [compact] = false → button full-width trong actions.
+class PrintOrderButton extends StatefulWidget {
+  const PrintOrderButton({
+    super.key,
+    required this.order,
+    this.compact = false,
+  });
+
+  final Order order;
+  final bool compact;
+
+  @override
+  State<PrintOrderButton> createState() => _PrintOrderButtonState();
+}
+
+class _PrintOrderButtonState extends State<PrintOrderButton> {
+  bool _printing = false;
+
+  Future<void> _handlePrint() async {
+    final connected = await ThermalPrinterService.instance.checkConnection();
+    if (!mounted) return;
+
+    if (!connected) {
+      await showDialog(
+        context: context,
+        builder: (_) => PrinterPickerDialog(
+          onConnected: (_) {
+            if (mounted) _doPrint();
+          },
+        ),
+      );
+      return;
+    }
+    _doPrint();
+  }
+
+  Future<void> _doPrint() async {
+    if (!mounted) return;
+    setState(() => _printing = true);
+    final ok = await ThermalPrinterService.instance.printOrder(widget.order);
+    if (!mounted) return;
+    setState(() => _printing = false);
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? '✓ Đã gửi lệnh in đến PT-210'
+                : '✗ In thất bại. Kiểm tra kết nối.',
+            style: GoogleFonts.dmSans(color: Colors.white),
+          ),
+          backgroundColor: ok ? AppColors.success : AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.all(12),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.compact) {
+      return IconButton(
+        onPressed: _printing ? null : _handlePrint,
+        icon: _printing
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primary,
+                ),
+              )
+            : const Icon(Icons.print_rounded),
+        color: AppColors.primary,
+        tooltip: 'In đơn hàng (PT-210)',
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: _printing ? null : _handlePrint,
+        icon: _printing
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.print_rounded, size: 18),
+        label: Text(
+          _printing ? 'Đang in...' : 'In lại đơn hàng (PT-210)',
+          style: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
