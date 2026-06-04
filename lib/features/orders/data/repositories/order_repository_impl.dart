@@ -12,9 +12,18 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Order> createOrder(List<OrderItem> items) async {
     try {
+      print(
+        'Creating order with items: ${items.map((e) => e.toString()).toList()}',
+      );
       final result = await _remote.createOrder(
         items
-            .map((e) => {'product_id': e.productId, 'quantity': e.quantity})
+            .map(
+              (e) => {
+                'product_id': e.productId,
+                'quantity': e.quantity,
+                'price': e.price,
+              },
+            )
             .toList(),
       );
       return result.toEntity();

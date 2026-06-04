@@ -23,11 +23,10 @@ class Discount extends Equatable {
     if (type == DiscountType.percent) {
       return (baseAmount * value / 100).clamp(0, baseAmount);
     }
-    if (type == DiscountType.fixedPrice) {
-      // value = giá mới muốn bán → giảm = baseAmount - giá mới
-      return (baseAmount - value).clamp(0, baseAmount);
+    if (type == DiscountType.amount) {
+      return value.clamp(0, baseAmount);
     }
-    return value.clamp(0, baseAmount);
+    return 0;
   }
 
   @override
@@ -46,9 +45,23 @@ class CartItem extends Equatable {
 
   double get unitPrice => product.price;
   double get baseSubtotal => unitPrice * quantity;
-  double get discountAmount =>
-      discount == null ? 0 : discount!.amountOff(baseSubtotal);
-  double get subtotal => baseSubtotal - discountAmount;
+  double get subtotal {
+    if (discount == null) return baseSubtotal;
+
+    switch (discount!.type) {
+      case DiscountType.percent:
+        return baseSubtotal - discount!.amountOff(baseSubtotal);
+
+      case DiscountType.amount:
+        return baseSubtotal - discount!.amountOff(baseSubtotal);
+
+      case DiscountType.fixedPrice:
+        // value = đơn giá mới
+        return discount!.value * quantity;
+    }
+  }
+
+  double get discountAmount => baseSubtotal - subtotal;
 
   CartItem copyWith({
     int? quantity,
