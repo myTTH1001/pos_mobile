@@ -3,12 +3,13 @@
 class ApiConstants {
   ApiConstants._();
 
-  // 🔧 Đổi thành IP/domain thực của server khi deploy
-  // Emulator Android: 10.0.2.2  |  iOS Simulator: localhost  |  Real device: IP LAN
+  // Backend routes are mounted under /api.
+  // Real phone: pass --dart-define=API_BASE_URL=http://PC_LAN_IP:8000/api
+  // USB with adb reverse tcp:8000 tcp:8000: use http://127.0.0.1:8000/api
+  // Default below is only for the standard Android emulator.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    // defaultValue: 'https://pos.qn-thanhphat.com/api',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'http://127.0.0.1:8000/api',
   );
 
   // ── Auth ──────────────────────────────────────────────

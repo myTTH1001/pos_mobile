@@ -37,14 +37,7 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       // Emit success — UI bắt rồi navigate về login
       emit(RegisterSuccess(storeName: event.storeName));
     } on DioException catch (e) {
-      final statusCode = e.response?.statusCode;
-      final detail = apiError(e);
-
-      final message = switch (statusCode) {
-        400 || 409 => detail,
-        422 => 'Thông tin không hợp lệ. Vui lòng kiểm tra lại.',
-        _ => 'Lỗi kết nối. Vui lòng thử lại.',
-      };
+      final message = apiError(e);
 
       emit(RegisterError(message));
       emit(const RegisterInitial()); // reset ngay để không kẹt state

@@ -28,16 +28,7 @@ class AuthRepositoryImpl implements AuthRepository {
         refreshToken: result.refreshToken,
       );
     } on DioException catch (e) {
-      final statusCode = e.response?.statusCode;
-      final message = apiError(e);
-
-      if (statusCode == 401) {
-        throw AuthException(message);
-      } else if (statusCode == 403) {
-        throw AuthException(message);
-      } else {
-        throw AuthException('Lỗi kết nối. Vui lòng thử lại.');
-      }
+      throw AuthException(apiError(e));
     }
   }
 

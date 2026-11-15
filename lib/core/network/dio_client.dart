@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../constants/api_constants.dart';
+import 'server_config.dart';
 import '../events/auth_event_bus.dart';
 import '../storage/secure_storage.dart';
 
@@ -16,7 +17,7 @@ class DioClient {
   Dio _build() {
     final client = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.baseUrl,
+        baseUrl: ServerConfig.baseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
         sendTimeout: const Duration(seconds: 30),

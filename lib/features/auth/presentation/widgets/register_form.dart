@@ -1,3 +1,4 @@
+import '../../../../shared/widgets/server_settings.dart';
 // lib/features/auth/presentation/widgets/register_form.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -110,6 +111,7 @@ class _RegisterFormState extends State<RegisterForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ServerSettings(enabled: !isLoading),
               TextFormField(
                 controller: _tenantCtrl,
                 enabled: !isLoading,
@@ -218,7 +220,7 @@ class _RegisterFormState extends State<RegisterForm> {
                 onFieldSubmitted: (_) =>
                     FocusScope.of(context).requestFocus(_confirmPasswordFocus),
                 decoration: InputDecoration(
-                  hintText: 'Tối thiểu 6 ký tự',
+                  hintText: 'Từ 12 đến 128 ký tự',
                   prefixIcon: Icon(
                     Icons.lock_outline_rounded,
                     color: _passwordFocus.hasFocus
@@ -242,8 +244,8 @@ class _RegisterFormState extends State<RegisterForm> {
                   if (v == null || v.isEmpty) {
                     return 'Vui lòng nhập mật khẩu';
                   }
-                  if (v.length < 12) {
-                    return 'Mật khẩu tối thiểu 12 ký tự';
+                  if (v.length < 12 || v.length > 128) {
+                    return 'Mật khẩu phải từ 12 đến 128 ký tự';
                   }
                   return null;
                 },

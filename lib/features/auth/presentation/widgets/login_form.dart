@@ -1,3 +1,4 @@
+import '../../../../shared/widgets/server_settings.dart';
 // lib/features/auth/presentation/widgets/login_form.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -95,6 +96,7 @@ class _LoginFormState extends State<LoginForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ServerSettings(enabled: !isLoading),
               // ── Heading (phone only) ──────────────────────
               Builder(
                 builder: (context) {
@@ -126,19 +128,19 @@ class _LoginFormState extends State<LoginForm> {
               ),
 
               // ── Username ──────────────────────────────────
-              _FieldLabel(label: 'Tên đăng nhập'),
+              _FieldLabel(label: 'Email đăng nhập'),
               const Gap(6),
               TextFormField(
                 controller: _usernameCtrl,
                 focusNode: _usernameFocus,
                 enabled: !isLoading,
-                keyboardType: TextInputType.text,
+                keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
                 autocorrect: false,
                 onFieldSubmitted: (_) =>
                     FocusScope.of(context).requestFocus(_passwordFocus),
                 decoration: InputDecoration(
-                  hintText: 'Nhập tên đăng nhập',
+                  hintText: 'Email đã đăng ký',
                   prefixIcon: Icon(
                     Icons.person_outline_rounded,
                     color: _usernameFocus.hasFocus
@@ -149,10 +151,10 @@ class _LoginFormState extends State<LoginForm> {
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
-                    return 'Vui lòng nhập tên đăng nhập';
+                    return 'Vui lòng nhập email đăng nhập';
                   }
                   if (v.trim().length < 3) {
-                    return 'Tên đăng nhập tối thiểu 3 ký tự';
+                    return 'Email tối thiểu 3 ký tự';
                   }
                   return null;
                 },
