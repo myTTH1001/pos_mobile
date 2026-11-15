@@ -1,4 +1,6 @@
 // lib/features/dashboard/presentation/pages/dashboard_shell.dart
+// ignore_for_file: unused_element
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -70,11 +72,41 @@ class _MobileLayout extends StatelessWidget {
         title: const _AppTitle(),
         // FIX Bug #5: Thêm logout vào mobile AppBar qua PopupMenu
         actions: [
-          const _NotificationButton(),
+          IconButton(
+            tooltip: 'Vận hành & cài đặt',
+            onPressed: () => context.push('/operations'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
           const SizedBox(width: 4),
           _ProfilePopupMenu(),
           const SizedBox(width: 8),
         ],
+      ),
+      drawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            children: [
+              const ListTile(title: Text('SaaS POS')),
+              for (var index = 0; index < dashboardDestinations.length; index++)
+                ListTile(
+                  leading: Icon(dashboardDestinations[index].icon),
+                  title: Text(dashboardDestinations[index].label),
+                  onTap: () {
+                    Navigator.pop(context);
+                    navigationShell.goBranch(index);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Vận hành & cài đặt'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/operations');
+                },
+              ),
+            ],
+          ),
+        ),
       ),
       body: navigationShell,
       // FIX Bug #1: Chỉ lấy bottomNavCount destinations, dùng effectiveIndex
@@ -258,23 +290,12 @@ class _TopBar extends StatelessWidget {
         children: [
           const _AppTitle(),
           const Spacer(),
-          Container(
-            width: 280,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F7FB),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const TextField(
-              decoration: InputDecoration(
-                hintText: 'Tìm kiếm...',
-                prefixIcon: Icon(Iconsax.search_normal),
-                border: InputBorder.none,
-              ),
-            ),
-          ),
           const SizedBox(width: 16),
-          const _NotificationButton(),
+          IconButton(
+            tooltip: 'Vận hành & cài đặt',
+            onPressed: () => context.push('/operations'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
           const SizedBox(width: 12),
           const _ProfileAvatar(),
         ],

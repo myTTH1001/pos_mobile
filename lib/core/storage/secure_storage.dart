@@ -11,6 +11,10 @@ class SecureStorage {
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
 
+  Future<String?> readValue(String key) => _storage.read(key: key);
+  Future<void> writeValue(String key, String? value) =>
+      _storage.write(key: key, value: value);
+
   // ── Token ───────────────────────────────────────────────
   Future<void> saveTokens({
     required String accessToken,

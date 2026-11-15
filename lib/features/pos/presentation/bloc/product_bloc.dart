@@ -33,6 +33,7 @@ class ProductState extends Equatable {
     this.filteredProducts = const [],
     this.query = '',
     this.errorMessage,
+    this.hasMore = false,
   });
 
   final ProductStatus status;
@@ -40,14 +41,17 @@ class ProductState extends Equatable {
   final List<ProductEntity> filteredProducts;
   final String query;
   final String? errorMessage;
+  final bool hasMore;
 
   ProductState copyWith({
+    bool? hasMore,
     ProductStatus? status,
     List<ProductEntity>? products,
     List<ProductEntity>? filteredProducts,
     String? query,
     String? errorMessage,
   }) => ProductState(
+    hasMore: hasMore ?? this.hasMore,
     status: status ?? this.status,
     products: products ?? this.products,
     filteredProducts: filteredProducts ?? this.filteredProducts,
@@ -62,6 +66,7 @@ class ProductState extends Equatable {
     filteredProducts,
     query,
     errorMessage,
+    hasMore,
   ];
 }
 
@@ -72,45 +77,75 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       super(const ProductState()) {
     on<ProductLoadRequested>(_onLoad);
     on<ProductSearchChanged>(_onSearch);
+    on<ProductNextPage>((event, emit) => _loadPage(emit, append: true));
   }
 
   final ProductRepository _repo;
 
+  int _generation = 0;
+  bool _loadingMore = false;
   Future<void> _onLoad(
     ProductLoadRequested event,
     Emitter<ProductState> emit,
+  ) => _loadPage(emit);
+
+  Future<void> _onSearch(
+    ProductSearchChanged event,
+    Emitter<ProductState> emit,
   ) async {
-    emit(state.copyWith(status: ProductStatus.loading));
+    emit(state.copyWith(query: event.query));
+    await _loadPage(emit);
+  }
+
+  Future<void> _loadPage(
+    Emitter<ProductState> emit, {
+    bool append = false,
+  }) async {
+    if (append &&
+        (_loadingMore ||
+            !state.hasMore ||
+            state.status == ProductStatus.loading)) {
+      return;
+    }
+    final generation = append ? _generation : ++_generation;
+    final query = state.query;
+    final existing = append ? state.products : <ProductEntity>[];
+    if (append) {
+      _loadingMore = true;
+    } else {
+      emit(state.copyWith(status: ProductStatus.loading));
+    }
     try {
-      // Dùng getProducts với limit lớn để lấy toàn bộ cho POS grid
       final page = await _repo.getProducts(
-        search: state.query.isEmpty ? null : state.query,
-        limit: 100,
-        offset: 0,
+        search: query.isEmpty ? null : query,
+        limit: 40,
+        offset: existing.length,
       );
+      if (generation != _generation) return;
+      final products = [...existing, ...page.items];
       emit(
         state.copyWith(
           status: ProductStatus.success,
-          products: page.items,
-          filteredProducts: page.items,
+          products: products,
+          filteredProducts: products,
+          hasMore: page.hasMore,
         ),
       );
-    } catch (e) {
-      emit(
-        state.copyWith(
-          status: ProductStatus.failure,
-          errorMessage: e.toString().replaceFirst('Exception: ', ''),
-        ),
-      );
+    } catch (error) {
+      if (generation == _generation) {
+        emit(
+          state.copyWith(
+            status: ProductStatus.failure,
+            errorMessage: error.toString().replaceFirst('Exception: ', ''),
+          ),
+        );
+      }
+    } finally {
+      if (append) _loadingMore = false;
     }
   }
+}
 
-  void _onSearch(ProductSearchChanged event, Emitter<ProductState> emit) {
-    // Search client-side để không gọi API mỗi keystroke trên POS
-    final q = event.query.toLowerCase();
-    final filtered = state.products
-        .where((p) => p.name.toLowerCase().contains(q))
-        .toList();
-    emit(state.copyWith(query: event.query, filteredProducts: filtered));
-  }
+class ProductNextPage extends ProductEvent {
+  const ProductNextPage();
 }

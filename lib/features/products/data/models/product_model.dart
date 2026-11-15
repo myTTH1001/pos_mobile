@@ -21,7 +21,7 @@ class ProductModel {
     name: j['name'] as String,
     price: _toDouble(j['price']),
     unit: j['unit'] as String?,
-    image: j['image'] as String?,
+    image: (j['image_url'] ?? j['image']) as String?,
   );
 
   ProductEntity toEntity() =>

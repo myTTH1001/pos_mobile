@@ -1,3 +1,4 @@
+import '../../../operations/draft_page.dart';
 // lib/features/orders/presentation/pages/orders_page.dart
 //
 // Orders History — đầy đủ:
@@ -745,6 +746,16 @@ class _OrderDetailContent extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Tiếp tục / kiểm tra đơn',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DraftPage(orderId: order.id),
+                  ),
                 ),
               ),
               // Print button (compact) — chỉ hiện khi đơn đã thanh toán

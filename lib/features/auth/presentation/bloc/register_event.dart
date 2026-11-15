@@ -12,8 +12,12 @@ class RegisterSubmitted extends RegisterEvent {
     required this.username,
     required this.password,
     required this.storeName,
+    required this.tenantName,
+    required this.slug,
   });
 
+  final String tenantName;
+  final String slug;
   final String username;
   final String password;
   final String storeName;

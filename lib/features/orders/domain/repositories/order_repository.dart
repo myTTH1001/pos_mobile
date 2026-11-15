@@ -2,7 +2,10 @@ import '../entities/order_entity.dart';
 
 abstract class OrderRepository {
   /// Tạo draft order — backend trả về order với id
-  Future<Order> createOrder(List<OrderItem> items);
+  Future<Order> createOrder(
+    List<OrderItem> items, {
+    Map<String, dynamic> options = const {},
+  });
 
   /// Confirm order + trừ kho — cần payment_method
   Future<Order> confirmOrder(int orderId, String paymentMethod);

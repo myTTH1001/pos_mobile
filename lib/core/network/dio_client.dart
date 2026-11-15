@@ -1,143 +1,134 @@
-// lib/core/network/dio_client.dart
-import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import '../constants/api_constants.dart';
 import '../events/auth_event_bus.dart';
 import '../storage/secure_storage.dart';
 
 class DioClient {
   DioClient._();
-  static final DioClient instance = DioClient._();
+  static final instance = DioClient._();
+  late final Dio dio = _build();
+  Future<String>? _refresh;
+  int _epoch = 0;
+  void invalidateSession() {
+    _epoch++;
+  }
 
-  late final Dio _dio = _buildDio();
-  Dio get dio => _dio;
-
-  Dio _buildDio() {
-    final dio = Dio(
+  Dio _build() {
+    final client = Dio(
       BaseOptions(
         baseUrl: ApiConstants.baseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
         headers: {
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
       ),
     );
-
-    dio.interceptors.addAll([
-      _TokenInterceptor(dio),
-      PrettyDioLogger(
-        requestHeader: false,
-        requestBody: true,
-        responseBody: true,
-        responseHeader: false,
-        error: true,
-        compact: true,
+    bool publicPath(String path) => [
+      ApiConstants.login,
+      ApiConstants.register,
+      '/auth/register-tenant',
+      ApiConstants.refresh,
+    ].contains(path);
+    client.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          options.extra['sessionEpoch'] = _epoch;
+          if (!publicPath(options.path)) {
+            final token = await SecureStorage.instance.getAccessToken();
+            if (token != null) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
+          }
+          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          if (response.requestOptions.extra['sessionEpoch'] != _epoch) {
+            handler.reject(
+              DioException(
+                requestOptions: response.requestOptions,
+                type: DioExceptionType.cancel,
+                message: 'Phiên đã thay đổi.',
+              ),
+            );
+          } else {
+            handler.next(response);
+          }
+        },
+        onError: (error, handler) async {
+          final request = error.requestOptions;
+          if (error.response?.statusCode != 401 ||
+              publicPath(request.path) ||
+              request.extra['retried'] == true ||
+              request.extra['sessionEpoch'] != _epoch) {
+            handler.next(error);
+            return;
+          }
+          final epoch = _epoch;
+          try {
+            final current = await SecureStorage.instance.getAccessToken();
+            String token;
+            if (current != null &&
+                request.headers['Authorization'] != 'Bearer $current') {
+              token = current;
+            } else {
+              final future = _refresh ??= _refreshToken(client, epoch);
+              try {
+                token = await future;
+              } finally {
+                if (identical(_refresh, future)) _refresh = null;
+              }
+            }
+            if (epoch != _epoch) {
+              handler.next(error);
+              return;
+            }
+            // Never replay a write automatically, even after a 401.
+            if (!['GET', 'HEAD'].contains(request.method)) {
+              handler.next(error);
+              return;
+            }
+            request.extra['retried'] = true;
+            request.headers['Authorization'] = 'Bearer $token';
+            handler.resolve(await client.fetch<dynamic>(request));
+          } catch (_) {
+            handler.next(error);
+          }
+        },
       ),
-    ]);
-
-    return dio;
-  }
-}
-
-class _TokenInterceptor extends Interceptor {
-  _TokenInterceptor(this._dio);
-  final Dio _dio;
-
-  Completer<String>? _refreshCompleter;
-
-  static const _skipPaths = [
-    ApiConstants.login,
-    ApiConstants.register,
-    ApiConstants.refresh,
-  ];
-
-  @override
-  Future<void> onRequest(
-    RequestOptions options,
-    RequestInterceptorHandler handler,
-  ) async {
-    final shouldSkip = _skipPaths.any((p) => options.path.contains(p));
-    if (!shouldSkip) {
-      final token = await SecureStorage.instance.getAccessToken();
-      if (token != null) {
-        options.headers['Authorization'] = 'Bearer $token';
-      }
-    }
-    handler.next(options);
+    );
+    return client;
   }
 
-  @override
-  Future<void> onError(
-    DioException err,
-    ErrorInterceptorHandler handler,
-  ) async {
-    final isRetry = err.requestOptions.extra['skipRetry'] == true;
-    if (err.response?.statusCode != 401 || isRetry) {
-      handler.next(err);
-      return;
-    }
-
-    if (_refreshCompleter != null && !_refreshCompleter!.isCompleted) {
-      try {
-        final newToken = await _refreshCompleter!.future;
-        final opts = err.requestOptions;
-        opts.headers['Authorization'] = 'Bearer $newToken';
-        final retryResponse = await _dio.fetch(opts);
-        handler.resolve(retryResponse);
-      } catch (_) {
-        handler.next(err);
-      }
-      return;
-    }
-
-    _refreshCompleter = Completer<String>();
+  Future<String> _refreshToken(Dio client, int epoch) async {
     try {
-      final refreshToken = await SecureStorage.instance.getRefreshToken();
-      if (refreshToken == null) {
-        await _handleSessionExpired();
-        handler.next(err);
-        return;
-      }
-
-      final response = await _dio.post(
+      final refresh = await SecureStorage.instance.getRefreshToken();
+      if (refresh == null) throw StateError('Missing refresh token');
+      final response = await client.post(
         ApiConstants.refresh,
-        data: FormData.fromMap({'refresh_token': refreshToken}),
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          extra: {'skipRetry': true},
-        ),
+        data: {'refresh_token': refresh},
+        options: Options(contentType: Headers.formUrlEncodedContentType),
       );
-
-      final newAccess = response.data['access_token'] as String;
-      final newRefresh = response.data['refresh_token'] as String;
-
+      if (epoch != _epoch) throw StateError('Session changed');
+      final data = response.data as Map<String, dynamic>;
       await SecureStorage.instance.saveTokens(
-        accessToken: newAccess,
-        refreshToken: newRefresh,
+        accessToken: data['access_token'] as String,
+        refreshToken: data['refresh_token'] as String,
       );
-
-      _refreshCompleter!.complete(newAccess);
-
-      final opts = err.requestOptions;
-      opts.headers['Authorization'] = 'Bearer $newAccess';
-      final retryResponse = await _dio.fetch(opts);
-      handler.resolve(retryResponse);
-    } catch (_) {
-      // [FIX] Refresh thất bại → xóa token + emit logout toàn cục
-      await _handleSessionExpired();
-      _refreshCompleter!.completeError('refresh_failed');
-      handler.next(err);
-    } finally {
-      _refreshCompleter = null;
+      return data['access_token'] as String;
+    } catch (error) {
+      // A temporary outage must not erase the user's session.
+      if (epoch == _epoch &&
+          (error is StateError ||
+              error is DioException &&
+                  [401, 403].contains(error.response?.statusCode))) {
+        _epoch++;
+        await SecureStorage.instance.clearTokens();
+        AuthEventBus.instance.emitLogout();
+      }
+      rethrow;
     }
-  }
-
-  Future<void> _handleSessionExpired() async {
-    await SecureStorage.instance.clearTokens();
-    // Thông báo AuthBloc để redirect về /login
-    AuthEventBus.instance.emitLogout();
   }
 }

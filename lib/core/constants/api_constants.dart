@@ -5,7 +5,11 @@ class ApiConstants {
 
   // 🔧 Đổi thành IP/domain thực của server khi deploy
   // Emulator Android: 10.0.2.2  |  iOS Simulator: localhost  |  Real device: IP LAN
-  static const String baseUrl = 'https://pos.qn-thanhphat.com/api';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    // defaultValue: 'https://pos.qn-thanhphat.com/api',
+    defaultValue: 'http://127.0.0.1:8000',
+  );
 
   // ── Auth ──────────────────────────────────────────────
   static const String login = '/auth/login';

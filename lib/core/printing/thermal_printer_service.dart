@@ -1,3 +1,4 @@
+import '../network/dio_client.dart';
 // lib/core/printing/thermal_printer_service.dart
 //
 // ESC/POS Bluetooth printer service cho GOOJPRT PT-210 (58mm)
@@ -238,14 +239,20 @@ class ThermalPrinterService {
   }) async {
     // Dùng cached profile — không gọi load() lại
     final profile = await _getProfile();
-    final gen = Generator(PaperSize.mm58, profile);
+    final settings =
+        (await DioClient.instance.dio.get('/retail/receipt-settings')).data
+            as Map;
+    final gen = Generator(
+      settings['width'] == '80' ? PaperSize.mm80 : PaperSize.mm58,
+      profile,
+    );
     List<int> bytes = [];
 
     bytes += gen.reset();
 
     // ── Header store ──────────────────────────────────────────────────────
     bytes += gen.text(
-      'DAC SAN QUE HUONG',
+      _stripDiacritics(settings['name']?.toString() ?? 'CUA HANG'),
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,

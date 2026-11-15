@@ -24,7 +24,7 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
     // Backend dùng OAuth2PasswordRequestForm → gửi form-encoded
     final response = await _dio.post(
       ApiConstants.login,
-      data: FormData.fromMap({'username': username, 'password': password}),
+      data: {'username': username.trim(), 'password': password},
       options: Options(contentType: 'application/x-www-form-urlencoded'),
     );
 
@@ -35,7 +35,7 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
   Future<void> logout({required String refreshToken}) async {
     await _dio.post(
       ApiConstants.logout,
-      data: FormData.fromMap({'refresh_token': refreshToken}),
+      data: {'refresh_token': refreshToken},
       options: Options(contentType: 'application/x-www-form-urlencoded'),
     );
   }

@@ -72,8 +72,14 @@ class OrderModel {
     required this.items,
     required this.createdAt,
     this.invoice,
+    this.version = 1,
+    this.taxAmount = 0,
+    this.discountAmount = 0,
   });
 
+  final int version;
+  final double taxAmount;
+  final double discountAmount;
   final int id;
   final String status;
   final double total;
@@ -82,6 +88,9 @@ class OrderModel {
   final OrderInvoiceModel? invoice;
 
   factory OrderModel.fromJson(Map<String, dynamic> j) => OrderModel(
+    version: j['version'] as int? ?? 1,
+    taxAmount: _toDouble(j['tax_amount']),
+    discountAmount: _toDouble(j['discount_amount']),
     id: j['id'] as int,
     status: j['status'] as String,
     total: _toDouble(j['total']),
@@ -97,6 +106,9 @@ class OrderModel {
   );
 
   Order toEntity() => Order(
+    version: version,
+    taxAmount: taxAmount,
+    discountAmount: discountAmount,
     id: id,
     status: status,
     total: total,

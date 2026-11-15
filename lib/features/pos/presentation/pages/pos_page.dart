@@ -15,7 +15,10 @@ class PosPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(create: (_) => PosBloc(), child: const _PosView());
+    return BlocProvider(
+      create: (_) => PosBloc()..add(const PosRestorePending()),
+      child: const _PosView(),
+    );
   }
 }
 
@@ -44,7 +47,7 @@ class _PosViewState extends State<_PosView>
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = MediaQuery.sizeOf(context).width >= 600;
+    final isTablet = MediaQuery.sizeOf(context).width >= 1000;
 
     return BlocListener<PosBloc, PosState>(
       listener: (ctx, state) {
@@ -205,7 +208,38 @@ class _TabletLayout extends StatelessWidget {
   }
 }
 
-void _showPaymentSheet(BuildContext context) {
+void _showPaymentSheet(BuildContext context) async {
+  final bloc = context.read<PosBloc>();
+  if (bloc.state.checkoutOrder == null &&
+      (bloc.state.orderDiscountAmount > 0 ||
+          bloc.state.cart.values.any((item) => item.discountAmount > 0))) {
+    final controller = TextEditingController(text: bloc.state.discountReason);
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lý do giảm giá'),
+        content: TextField(
+          controller: controller,
+          maxLength: 500,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Quay lại'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Tiếp tục'),
+          ),
+        ],
+      ),
+    );
+    // Dialog route can still be animating; let Flutter own controller until route disposes.
+    if (reason == null || reason.isEmpty || !context.mounted) return;
+    bloc.add(PosDiscountReasonChanged(reason));
+  }
+  if (!context.mounted) return;
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
