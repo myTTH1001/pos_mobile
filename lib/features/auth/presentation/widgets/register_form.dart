@@ -1,3 +1,4 @@
+import '../../../../shared/widgets/server_settings.dart';
 // lib/features/auth/presentation/widgets/register_form.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -25,6 +26,8 @@ class _RegisterFormState extends State<RegisterForm> {
   final _passwordFocus = FocusNode();
   final _confirmPasswordFocus = FocusNode();
 
+  final _tenantCtrl = TextEditingController();
+  final _slugCtrl = TextEditingController();
   final _storeNameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -39,6 +42,8 @@ class _RegisterFormState extends State<RegisterForm> {
     _usernameFocus.dispose();
     _passwordFocus.dispose();
     _confirmPasswordFocus.dispose();
+    _tenantCtrl.dispose();
+    _slugCtrl.dispose();
     _storeNameCtrl.dispose();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
@@ -52,6 +57,8 @@ class _RegisterFormState extends State<RegisterForm> {
 
     context.read<RegisterBloc>().add(
       RegisterSubmitted(
+        tenantName: _tenantCtrl.text.trim(),
+        slug: _slugCtrl.text.trim(),
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
         storeName: _storeNameCtrl.text.trim(),
@@ -104,6 +111,36 @@ class _RegisterFormState extends State<RegisterForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ServerSettings(enabled: !isLoading),
+              TextFormField(
+                controller: _tenantCtrl,
+                enabled: !isLoading,
+                decoration: const InputDecoration(
+                  labelText: 'Tên doanh nghiệp / hộ kinh doanh',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Vui lòng nhập tên'
+                    : null,
+              ),
+              const Gap(16),
+              TextFormField(
+                controller: _slugCtrl,
+                enabled: !isLoading,
+                decoration: const InputDecoration(
+                  labelText: 'Mã doanh nghiệp',
+                  hintText: 'cua-hang-minh',
+                ),
+                validator: (value) =>
+                    value == null ||
+                        !RegExp(
+                          r'^[a-z0-9]+(?:-[a-z0-9]+)*$',
+                        ).hasMatch(value) ||
+                        value.length < 3 ||
+                        value.length > 100
+                    ? 'Nhập 3–100 ký tự thường, số và dấu gạch nối'
+                    : null,
+              ),
+              const Gap(16),
               // ── Store name ────────────────────────────────
               _FieldLabel(label: 'Tên cửa hàng'),
               const Gap(6),
@@ -139,19 +176,19 @@ class _RegisterFormState extends State<RegisterForm> {
               const Gap(16),
 
               // ── Username ──────────────────────────────────
-              _FieldLabel(label: 'Tên đăng nhập'),
+              _FieldLabel(label: 'Email'),
               const Gap(6),
               TextFormField(
                 controller: _usernameCtrl,
                 focusNode: _usernameFocus,
                 enabled: !isLoading,
-                keyboardType: TextInputType.text,
+                keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
                 autocorrect: false,
                 onFieldSubmitted: (_) =>
                     FocusScope.of(context).requestFocus(_passwordFocus),
                 decoration: InputDecoration(
-                  hintText: 'Nhập tên đăng nhập',
+                  hintText: 'Email đăng nhập',
                   prefixIcon: Icon(
                     Icons.person_outline_rounded,
                     color: _usernameFocus.hasFocus
@@ -160,18 +197,13 @@ class _RegisterFormState extends State<RegisterForm> {
                     size: 20,
                   ),
                 ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'Vui lòng nhập tên đăng nhập';
-                  }
-                  if (v.trim().length < 3) {
-                    return 'Tên đăng nhập tối thiểu 3 ký tự';
-                  }
-                  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(v.trim())) {
-                    return 'Chỉ được dùng chữ, số và dấu gạch dưới';
-                  }
-                  return null;
-                },
+                validator: (value) =>
+                    value == null ||
+                        !RegExp(
+                          r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                        ).hasMatch(value.trim())
+                    ? 'Email không hợp lệ'
+                    : null,
               ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.05),
 
               const Gap(16),
@@ -188,7 +220,7 @@ class _RegisterFormState extends State<RegisterForm> {
                 onFieldSubmitted: (_) =>
                     FocusScope.of(context).requestFocus(_confirmPasswordFocus),
                 decoration: InputDecoration(
-                  hintText: 'Tối thiểu 6 ký tự',
+                  hintText: 'Từ 12 đến 128 ký tự',
                   prefixIcon: Icon(
                     Icons.lock_outline_rounded,
                     color: _passwordFocus.hasFocus
@@ -212,8 +244,8 @@ class _RegisterFormState extends State<RegisterForm> {
                   if (v == null || v.isEmpty) {
                     return 'Vui lòng nhập mật khẩu';
                   }
-                  if (v.length < 6) {
-                    return 'Mật khẩu tối thiểu 6 ký tự';
+                  if (v.length < 12 || v.length > 128) {
+                    return 'Mật khẩu phải từ 12 đến 128 ký tự';
                   }
                   return null;
                 },

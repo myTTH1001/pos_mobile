@@ -1,3 +1,4 @@
+import '../../../operations/customer_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,6 +17,33 @@ class CartPanel extends StatelessWidget {
       builder: (ctx, state) {
         return Column(
           children: [
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.person_outline),
+              title: Text(state.customerName),
+              subtitle: state.checkoutOrder != null
+                  ? const Text('Đơn đã lưu — sửa tại chi tiết đơn')
+                  : null,
+              onTap: state.isProcessing || state.checkoutOrder != null
+                  ? null
+                  : () async {
+                      final selected =
+                          await Navigator.push<Map<String, dynamic>>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const CustomerPicker(),
+                            ),
+                          );
+                      if (selected != null && context.mounted) {
+                        context.read<PosBloc>().add(
+                          PosCustomerChanged(
+                            selected['id'] as int?,
+                            selected['full_name'] as String,
+                          ),
+                        );
+                      }
+                    },
+            ),
             // ── Header ───────────────────────────────────────
             Container(
               color: Colors.white,
@@ -23,7 +51,9 @@ class CartPanel extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    'Giỏ hàng',
+                    state.checkoutOrder == null
+                        ? 'Giỏ hàng'
+                        : 'Đơn #${state.checkoutOrder!.id}',
                     style: GoogleFonts.dmSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -157,21 +187,25 @@ class _CartItemTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 // Nút giảm giá item
                 GestureDetector(
-                  onTap: () async {
-                    final result = await showDiscountSheet(
-                      context,
-                      title: item.product.name,
-                      baseAmount: item.baseSubtotal,
-                      current: item.discount,
-                    );
-                    if (!context.mounted) return;
-                    context.read<PosBloc>().add(
-                      PosItemDiscountChanged(
-                        productId: item.product.id,
-                        discount: result,
-                      ),
-                    );
-                  },
+                  onTap:
+                      !context.read<PosBloc>().state.canDiscount ||
+                          context.read<PosBloc>().state.checkoutOrder != null
+                      ? null
+                      : () async {
+                          final result = await showDiscountSheet(
+                            context,
+                            title: item.product.name,
+                            baseAmount: item.baseSubtotal,
+                            current: item.discount,
+                          );
+                          if (!context.mounted) return;
+                          context.read<PosBloc>().add(
+                            PosItemDiscountChanged(
+                              productId: item.product.id,
+                              discount: result,
+                            ),
+                          );
+                        },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 7,
@@ -341,7 +375,8 @@ class _CartFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasOrderDiscount = state.orderDiscount != null;
     final hasAnyItemDiscount = state.cartItems.any((e) => e.discount != null);
-    final showBreakdown = hasAnyItemDiscount || hasOrderDiscount;
+    final showBreakdown =
+        state.checkoutOrder == null && (hasAnyItemDiscount || hasOrderDiscount);
     final itemDiscountTotal = state.cartItems.fold(
       0.0,
       (s, e) => s + e.discountAmount,
@@ -352,6 +387,32 @@ class _CartFooter extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         children: [
+          if (state.checkoutOrder != null) ...[
+            _SummaryRow(
+              label: 'Giảm giá (máy chủ)',
+              value: '-${_formatPrice(state.checkoutOrder!.discountAmount)}',
+            ),
+            _SummaryRow(
+              label: 'VAT (máy chủ)',
+              value: _formatPrice(state.checkoutOrder!.taxAmount),
+            ),
+            const Text(
+              'Đơn đã lưu. Để sửa tiếp, chọn Tạo đơn nháp rồi mở tại Đơn hàng.',
+            ),
+          ] else if (hasAnyItemDiscount || hasOrderDiscount)
+            TextFormField(
+              initialValue: state.discountReason,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Lý do giảm giá (bắt buộc)',
+              ),
+              onChanged: (value) =>
+                  context.read<PosBloc>().add(PosDiscountReasonChanged(value)),
+            ),
+          if (state.pendingRecovery)
+            const Text(
+              'Có yêu cầu chưa rõ kết quả. Bấm Tiếp tục để đối chiếu; không tạo đơn mới.',
+            ),
           // ── Breakdown giảm giá (chỉ hiện khi có discount) ───
           if (showBreakdown) ...[
             if (hasAnyItemDiscount)
@@ -375,18 +436,23 @@ class _CartFooter extends StatelessWidget {
             children: [
               // Nút giảm giá toàn đơn
               GestureDetector(
-                onTap: () async {
-                  final result = await showDiscountSheet(
-                    context,
-                    title: 'Giảm giá đơn hàng',
-                    baseAmount: state.subtotalAfterItemDiscounts,
-                    current: state.orderDiscount,
-                  );
-                  if (!context.mounted) return;
-                  context.read<PosBloc>().add(
-                    PosOrderDiscountChanged(discount: result),
-                  );
-                },
+                onTap:
+                    !state.canDiscount ||
+                        state.isProcessing ||
+                        state.checkoutOrder != null
+                    ? null
+                    : () async {
+                        final result = await showDiscountSheet(
+                          context,
+                          title: 'Giảm giá đơn hàng',
+                          baseAmount: state.subtotalAfterItemDiscounts,
+                          current: state.orderDiscount,
+                        );
+                        if (!context.mounted) return;
+                        context.read<PosBloc>().add(
+                          PosOrderDiscountChanged(discount: result),
+                        );
+                      },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 9,
@@ -522,18 +588,22 @@ class _SaveDraftButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocConsumer<PosBloc, PosState>(
       // Chỉ rebuild khi status liên quan đến saveDraft thay đổi
-      buildWhen: (p, c) =>
-          p.status == PosStatus.savingDraft ||
-          c.status == PosStatus.savingDraft,
+      buildWhen: (p, c) => p.status != c.status,
       listenWhen: (p, c) =>
           p.status != c.status &&
           (c.status == PosStatus.saveDraftSuccess ||
               c.status == PosStatus.error),
       listener: (ctx, state) {
         // Hiện snackbar khi lưu nháp thành công
+
         if (state.status == PosStatus.saveDraftSuccess) {
+          if (!ctx.mounted) return;
+
+          final posBloc = ctx.read<PosBloc>();
+          final messenger = ScaffoldMessenger.of(ctx);
           final orderId = state.savedDraftOrder?.id;
-          ScaffoldMessenger.of(ctx)
+
+          messenger
             ..clearSnackBars()
             ..showSnackBar(
               SnackBar(
@@ -565,12 +635,11 @@ class _SaveDraftButton extends StatelessWidget {
               ),
             );
 
-          // Reset status về idle sau khi hiện snackbar
-          // để tránh kẹt ở saveDraftSuccess
-          Future.microtask(
-            () => ctx.read<PosBloc>().add(const PosDraftConsumed()),
-          );
+          // Đưa trạng thái về idle.
+          // Không sử dụng BuildContext trong Future.microtask.
+          posBloc.add(const PosDraftConsumed());
         }
+
         if (state.status == PosStatus.error) {
           ScaffoldMessenger.of(ctx)
             ..clearSnackBars()

@@ -1,7 +1,7 @@
 // lib/features/auth/presentation/bloc/auth_bloc.dart
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../../core/events/auth_event_bus.dart';
+import '../../../../core/events/auth_event_bus.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import 'auth_event.dart';

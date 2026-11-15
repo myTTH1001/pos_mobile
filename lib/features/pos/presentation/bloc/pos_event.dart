@@ -81,3 +81,26 @@ class PosOrderDiscountChanged extends PosEvent {
   @override
   List<Object?> get props => [discount];
 }
+
+class PosPrepareCheckout extends PosEvent {
+  const PosPrepareCheckout();
+}
+
+class PosRestorePending extends PosEvent {
+  const PosRestorePending();
+}
+
+class PosDiscountReasonChanged extends PosEvent {
+  const PosDiscountReasonChanged(this.reason);
+  final String reason;
+  @override
+  List<Object?> get props => [reason];
+}
+
+class PosCustomerChanged extends PosEvent {
+  const PosCustomerChanged(this.id, this.name);
+  final int? id;
+  final String name;
+  @override
+  List<Object?> get props => [id, name];
+}

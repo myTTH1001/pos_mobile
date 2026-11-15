@@ -1,3 +1,5 @@
+import '../network/permission_gate.dart';
+import '../../features/operations/operations_page.dart';
 // lib/core/router/app_router.dart
 import 'dart:async';
 
@@ -30,7 +32,9 @@ GoRouter createRouter(AuthBloc authBloc) {
       final location = state.matchedLocation;
 
       // Chưa biết trạng thái auth → không redirect, giữ nguyên
-      if (authState is AuthInitial || authState is AuthLoading) return null;
+      if (authState is AuthInitial || authState is AuthLoading) {
+        return location == AppRoutes.login ? null : AppRoutes.login;
+      }
 
       final isLoggedIn = authState is AuthAuthenticated;
       final isOnLoginPage = location == AppRoutes.login;
@@ -50,6 +54,10 @@ GoRouter createRouter(AuthBloc authBloc) {
     },
 
     routes: [
+      GoRoute(
+        path: '/operations',
+        builder: (context, state) => const OperationsPage(),
+      ),
       GoRoute(
         path: AppRoutes.login,
         name: 'login',
@@ -73,7 +81,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.pos,
                 name: 'pos',
-                builder: (context, state) => const PosPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'order:create',
+                  child: PosPage(),
+                ),
               ),
             ],
           ),
@@ -82,7 +93,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.products,
                 name: 'products',
-                builder: (context, state) => const ProductsPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'product:view',
+                  child: ProductsPage(),
+                ),
               ),
             ],
           ),
@@ -91,7 +105,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.orders,
                 name: 'orders',
-                builder: (context, state) => const OrdersPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'order:view',
+                  child: OrdersPage(),
+                ),
               ),
             ],
           ),
@@ -100,7 +117,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.stock,
                 name: 'stock',
-                builder: (context, state) => const StockPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'stock:view',
+                  child: StockPage(),
+                ),
               ),
             ],
           ),
@@ -109,7 +129,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.invoices,
                 name: 'invoices',
-                builder: (context, state) => const InvoicesPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'invoice:view',
+                  child: InvoicesPage(),
+                ),
               ),
             ],
           ),
@@ -118,7 +141,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.reports,
                 name: 'reports',
-                builder: (context, state) => const ReportsPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'report:view',
+                  child: ReportsPage(),
+                ),
               ),
             ],
           ),
@@ -127,7 +153,10 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: AppRoutes.users,
                 name: 'users',
-                builder: (context, state) => const UsersPage(),
+                builder: (context, state) => const PermissionGate(
+                  permission: 'manage_users',
+                  child: UsersPage(),
+                ),
               ),
             ],
           ),

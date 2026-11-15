@@ -57,7 +57,7 @@ class CartItem extends Equatable {
 
       case DiscountType.fixedPrice:
         // value = đơn giá mới
-        return discount!.value * quantity;
+        return discount!.value.clamp(0.0, unitPrice).toDouble() * quantity;
     }
   }
 
@@ -84,9 +84,21 @@ class PosState extends Equatable {
     this.completedOrder,
     this.savedDraftOrder,
     this.errorMessage,
+    this.checkoutOrder,
+    this.discountReason = '',
+    this.customerId,
+    this.customerName = 'Khách lẻ',
+    this.pendingRecovery = false,
+    this.canDiscount = false,
     this.orderDiscount, // giảm giá toàn đơn
   });
 
+  final int? customerId;
+  final String customerName;
+  final bool canDiscount;
+  final bool pendingRecovery;
+  final Order? checkoutOrder;
+  final String discountReason;
   final Map<int, CartItem> cart;
   final PosStatus status;
   final Order? completedOrder;
@@ -104,16 +116,30 @@ class PosState extends Equatable {
   /// Số tiền giảm toàn đơn
   double get orderDiscountAmount => orderDiscount == null
       ? 0
+      : orderDiscount!.type == DiscountType.fixedPrice
+      ? (subtotalAfterItemDiscounts - orderDiscount!.value).clamp(
+          0,
+          subtotalAfterItemDiscounts,
+        )
       : orderDiscount!.amountOff(subtotalAfterItemDiscounts);
 
   /// Tổng cuối cùng
-  double get grandTotal => subtotalAfterItemDiscounts - orderDiscountAmount;
+  double get grandTotal =>
+      checkoutOrder?.total ?? subtotalAfterItemDiscounts - orderDiscountAmount;
 
-  bool get cartEmpty => cart.isEmpty;
+  bool get cartEmpty =>
+      cart.isEmpty && checkoutOrder == null && !pendingRecovery;
   bool get isProcessing =>
       status == PosStatus.loading || status == PosStatus.savingDraft;
 
   PosState copyWith({
+    int? customerId,
+    String? customerName,
+    bool clearCustomer = false,
+    bool? canDiscount,
+    bool? pendingRecovery,
+    Order? checkoutOrder,
+    String? discountReason,
     Map<int, CartItem>? cart,
     PosStatus? status,
     Order? completedOrder,
@@ -125,6 +151,12 @@ class PosState extends Equatable {
     Discount? orderDiscount,
     bool clearOrderDiscount = false,
   }) => PosState(
+    customerId: clearCustomer ? null : customerId ?? this.customerId,
+    customerName: customerName ?? this.customerName,
+    canDiscount: canDiscount ?? this.canDiscount,
+    pendingRecovery: pendingRecovery ?? this.pendingRecovery,
+    checkoutOrder: checkoutOrder ?? this.checkoutOrder,
+    discountReason: discountReason ?? this.discountReason,
     cart: cart ?? this.cart,
     status: status ?? this.status,
     completedOrder: clearCompletedOrder
@@ -143,6 +175,12 @@ class PosState extends Equatable {
 
   @override
   List<Object?> get props => [
+    checkoutOrder,
+    pendingRecovery,
+    canDiscount,
+    customerId,
+    customerName,
+    discountReason,
     cart,
     status,
     completedOrder,

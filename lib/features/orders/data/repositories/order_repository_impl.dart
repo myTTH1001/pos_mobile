@@ -10,11 +10,11 @@ class OrderRepositoryImpl implements OrderRepository {
   final OrderRemoteDatasource _remote;
 
   @override
-  Future<Order> createOrder(List<OrderItem> items) async {
+  Future<Order> createOrder(
+    List<OrderItem> items, {
+    Map<String, dynamic> options = const {},
+  }) async {
     try {
-      print(
-        'Creating order with items: ${items.map((e) => e.toString()).toList()}',
-      );
       final result = await _remote.createOrder(
         items
             .map(
@@ -25,10 +25,11 @@ class OrderRepositoryImpl implements OrderRepository {
               },
             )
             .toList(),
+        options: options,
       );
       return result.toEntity();
-    } on DioException catch (e) {
-      throw _handleError(e);
+    } on DioException catch (_) {
+      rethrow;
     }
   }
 
@@ -37,8 +38,8 @@ class OrderRepositoryImpl implements OrderRepository {
     try {
       final result = await _remote.confirmOrder(orderId, paymentMethod);
       return result.toEntity();
-    } on DioException catch (e) {
-      throw _handleError(e);
+    } on DioException catch (_) {
+      rethrow;
     }
   }
 
@@ -47,13 +48,8 @@ class OrderRepositoryImpl implements OrderRepository {
     try {
       final result = await _remote.payOrder(orderId, paymentMethod);
       return result.toEntity();
-    } on DioException catch (e) {
-      throw _handleError(e);
+    } on DioException catch (_) {
+      rethrow;
     }
-  }
-
-  Exception _handleError(DioException e) {
-    final msg = e.response?.data?['detail'] as String?;
-    return Exception(msg ?? 'Lỗi kết nối. Vui lòng thử lại.');
   }
 }

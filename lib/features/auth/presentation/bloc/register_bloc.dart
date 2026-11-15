@@ -2,7 +2,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_error.dart';
 import '../../../../core/network/dio_client.dart';
 import 'register_event.dart';
 import 'register_state.dart';
@@ -19,29 +19,25 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
     RegisterSubmitted event,
     Emitter<RegisterState> emit,
   ) async {
+    if (state is RegisterLoading) return;
     emit(const RegisterLoading());
     try {
       await _dio.post(
-        ApiConstants.register,
-        data: FormData.fromMap({
-          'username': event.username,
+        '/auth/register-tenant',
+        data: {
+          'tenant_name': event.tenantName.trim(),
+          'slug': event.slug.trim(),
+          'email': event.username.trim().toLowerCase(),
           'password': event.password,
-          'store_name': event.storeName,
-        }),
-        options: Options(contentType: 'application/x-www-form-urlencoded'),
+          'store_name': event.storeName.trim(),
+          'vertical': 'retail',
+        },
       );
 
       // Emit success — UI bắt rồi navigate về login
       emit(RegisterSuccess(storeName: event.storeName));
     } on DioException catch (e) {
-      final statusCode = e.response?.statusCode;
-      final detail = e.response?.data?['detail'] as String?;
-
-      final message = switch (statusCode) {
-        400 => detail ?? 'Tên đăng nhập đã tồn tại',
-        422 => 'Thông tin không hợp lệ. Vui lòng kiểm tra lại.',
-        _ => 'Lỗi kết nối. Vui lòng thử lại.',
-      };
+      final message = apiError(e);
 
       emit(RegisterError(message));
       emit(const RegisterInitial()); // reset ngay để không kẹt state

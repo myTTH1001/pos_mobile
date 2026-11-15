@@ -1,9 +1,13 @@
+import 'dart:async';
 // lib/features/pos/presentation/widgets/product_grid.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_error.dart';
+import '../../../products/data/models/product_model.dart';
 import '../../../products/domain/entities/product_entity.dart';
 import '../bloc/pos_bloc.dart';
 import '../bloc/product_bloc.dart';
@@ -30,9 +34,38 @@ class _ProductGridContent extends StatefulWidget {
 
 class _ProductGridContentState extends State<_ProductGridContent> {
   final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  Future<void> _scanQueue = Future.value();
+  void _scan(String code) {
+    _debounce?.cancel();
+    final value = code.trim();
+    if (value.isEmpty) return;
+    _searchCtrl.clear();
+    context.read<ProductBloc>().add(const ProductSearchChanged(''));
+    _scanQueue = _scanQueue.then((_) async {
+      try {
+        final response = await DioClient.instance.dio.get(
+          '/products/scan',
+          queryParameters: {'code': value},
+        );
+        if (!mounted) return;
+        final product = ProductModel.fromJson(
+          response.data as Map<String, dynamic>,
+        ).toEntity();
+        context.read<PosBloc>().add(PosProductAdded(product));
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(apiError(error))));
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -49,10 +82,20 @@ class _ProductGridContentState extends State<_ProductGridContent> {
             buildWhen: (p, c) => p.query != c.query,
             builder: (ctx, state) => TextField(
               controller: _searchCtrl,
-              onChanged: (v) =>
-                  ctx.read<ProductBloc>().add(ProductSearchChanged(v)),
+              autofocus: true,
+              onSubmitted: _scan,
+              onChanged: (value) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 300), () {
+                  if (mounted) {
+                    ctx.read<ProductBloc>().add(
+                      ProductSearchChanged(value.trim()),
+                    );
+                  }
+                });
+              },
               decoration: InputDecoration(
-                hintText: 'Tìm sản phẩm...',
+                hintText: 'Tìm tên / quét mã rồi Enter',
                 prefixIcon: const Icon(
                   Icons.search,
                   size: 20,
@@ -62,6 +105,7 @@ class _ProductGridContentState extends State<_ProductGridContent> {
                     ? IconButton(
                         icon: const Icon(Icons.close, size: 18),
                         onPressed: () {
+                          _debounce?.cancel();
                           _searchCtrl.clear();
                           context.read<ProductBloc>().add(
                             const ProductSearchChanged(''),
@@ -151,17 +195,34 @@ class _ProductGridContentState extends State<_ProductGridContent> {
                 color: AppColors.primary,
                 onRefresh: () async =>
                     ctx.read<ProductBloc>().add(const ProductLoadRequested()),
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 160,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 0.85,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notice) {
+                    if (notice.metrics.extentAfter < 240 && state.hasMore) {
+                      ctx.read<ProductBloc>().add(const ProductNextPage());
+                    }
+                    return false;
+                  },
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 160,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 0.85,
+                        ),
+                    itemCount: state.filteredProducts.length,
+                    itemBuilder: (ctx, i) => _ProductCard(
+                      product: state.filteredProducts[i],
+                      onAdded: () {
+                        _debounce?.cancel();
+                        _searchCtrl.clear();
+                        ctx.read<ProductBloc>().add(
+                          const ProductSearchChanged(''),
+                        );
+                      },
+                    ),
                   ),
-                  itemCount: state.filteredProducts.length,
-                  itemBuilder: (ctx, i) =>
-                      _ProductCard(product: state.filteredProducts[i]),
                 ),
               );
             },
@@ -173,7 +234,8 @@ class _ProductGridContentState extends State<_ProductGridContent> {
 }
 
 class _ProductCard extends StatelessWidget {
-  const _ProductCard({required this.product});
+  const _ProductCard({required this.product, required this.onAdded});
+  final VoidCallback onAdded;
   final ProductEntity product;
 
   @override
@@ -187,7 +249,12 @@ class _ProductCard extends StatelessWidget {
         final selected = qty > 0;
 
         return GestureDetector(
-          onTap: () => ctx.read<PosBloc>().add(PosProductAdded(product)),
+          onTap: state.isProcessing || state.checkoutOrder != null
+              ? null
+              : () {
+                  ctx.read<PosBloc>().add(PosProductAdded(product));
+                  onAdded();
+                },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(

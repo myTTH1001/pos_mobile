@@ -1,3 +1,4 @@
+import '../../../../core/network/api_error.dart';
 // lib/features/products/data/repositories/product_repository_impl.dart
 import 'package:dio/dio.dart';
 import '../../domain/entities/product_entity.dart';
@@ -32,8 +33,8 @@ class ProductRepositoryImpl implements ProductRepository {
         hasMore: result.hasMore,
       );
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] as String?;
-      throw Exception(msg ?? 'Không thể tải danh sách sản phẩm');
+      final msg = apiError(e);
+      throw Exception(msg);
     }
   }
 
@@ -61,8 +62,8 @@ class ProductRepositoryImpl implements ProductRepository {
       );
       return model.toEntity();
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] as String?;
-      throw Exception(msg ?? 'Không thể tạo sản phẩm');
+      final msg = apiError(e);
+      throw Exception(msg);
     }
   }
 
@@ -86,8 +87,8 @@ class ProductRepositoryImpl implements ProductRepository {
       );
       return model.toEntity();
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] as String?;
-      throw Exception(msg ?? 'Không thể cập nhật sản phẩm');
+      final msg = apiError(e);
+      throw Exception(msg);
     }
   }
 
@@ -96,8 +97,8 @@ class ProductRepositoryImpl implements ProductRepository {
     try {
       await _remote.deleteProduct(id);
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] as String?;
-      throw Exception(msg ?? 'Không thể xóa sản phẩm');
+      final msg = apiError(e);
+      throw Exception(msg);
     }
   }
 
@@ -107,8 +108,8 @@ class ProductRepositoryImpl implements ProductRepository {
       final result = await _remote.uploadImage(filePath);
       return result.url;
     } on DioException catch (e) {
-      final msg = e.response?.data?['detail'] as String?;
-      throw Exception(msg ?? 'Không thể upload ảnh');
+      final msg = apiError(e);
+      throw Exception(msg);
     }
   }
 }

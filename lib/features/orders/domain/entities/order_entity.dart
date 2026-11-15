@@ -34,8 +34,14 @@ class Order extends Equatable {
     required this.items,
     required this.createdAt,
     this.invoice,
+    this.version = 1,
+    this.taxAmount = 0,
+    this.discountAmount = 0,
   });
 
+  final int version;
+  final double taxAmount;
+  final double discountAmount;
   final int id;
   final String status;
   final double total;
